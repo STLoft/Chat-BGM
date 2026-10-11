@@ -1,0 +1,12 @@
+{
+    "display_name": "🎵 Chat BGM",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "STLoft",
+    "version": "0.6.0",
+    "homePage": "https://github.com/STLoft/Chat-BGM",
+    "auto_update": true
+}

@@ -1,0 +1,729 @@
+/* Chat BGM */
+
+/* ── 빠른 답장 줄 아이콘 ── */
+
+.cbgm-qr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2em;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+    opacity: 0.75;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+/* 빠른 답장이 꺼져 있어 입력창 왼쪽 단추 줄에 붙었을 때 */
+#leftSendForm > .cbgm-qr {
+    width: var(--bottomFormBlockSize, 35px);
+    height: var(--bottomFormBlockSize, 35px);
+    font-size: var(--bottomFormIconSize, 1.1em);
+}
+
+.cbgm-qr:hover,
+.cbgm-qr.cbgm-playing {
+    opacity: 1;
+}
+
+.cbgm-qr.cbgm-playing {
+    color: var(--SmartThemeQuoteColor, #7cc);
+}
+
+.cbgm-qr.cbgm-playing i {
+    animation: cbgm-beat 1.6s ease-in-out infinite;
+}
+
+.cbgm-qr.cbgm-busy i {
+    animation: cbgm-spin 1.1s linear infinite;
+}
+
+.cbgm-qr.cbgm-need-tap {
+    color: var(--warning, #e8a33d);
+    opacity: 1;
+}
+
+@keyframes cbgm-beat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.18); }
+}
+
+@keyframes cbgm-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── 플레이어 ── */
+
+/* 닫아도 음악은 계속 나와야 하므로 display:none으로 두지 않고 보이지 않게만 한다. */
+.cbgm-panel {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 4000;
+    display: flex;
+    flex-direction: column;
+    width: min(300px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    overflow: hidden;
+    color: var(--SmartThemeBodyColor, #ddd);
+    background: var(--SmartThemeBlurTintColor, #222);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    font-size: 13px;
+    line-height: 1.4;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.15s, visibility 0.15s;
+}
+
+.cbgm-panel.cbgm-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.cbgm-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px 6px 12px;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #555);
+}
+
+.cbgm-head-title {
+    flex: 1;
+    font-weight: 600;
+}
+
+.cbgm-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.cbgm-icon:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 14%, transparent);
+}
+
+.cbgm-icon-on {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor, #7cc);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7cc) 16%, transparent);
+}
+
+/* 반복 단추: 한 곡 반복은 1, ★ 곡들 반복은 ★를 귀퉁이에 붙인다. */
+.cbgm-icon[data-act="repeat"] {
+    position: relative;
+}
+
+.cbgm-icon[data-mode="one"]::after,
+.cbgm-icon[data-mode="star"]::after {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.cbgm-icon[data-mode="one"]::after {
+    content: "1";
+}
+
+.cbgm-icon[data-mode="star"]::after {
+    content: "★";
+}
+
+.cbgm-spin i {
+    animation: cbgm-spin 1.1s linear infinite;
+}
+
+.cbgm-video {
+    aspect-ratio: 16 / 9;
+    background: #000;
+    flex: none;
+}
+
+.cbgm-video iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* 곡이 없을 때는 영상 자리를 접는다. */
+.cbgm-empty .cbgm-video {
+    aspect-ratio: auto;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cbgm-now {
+    padding: 8px 12px 2px;
+}
+
+.cbgm-title {
+    font-weight: 600;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.cbgm-artist {
+    opacity: 0.8;
+    overflow-wrap: anywhere;
+}
+
+.cbgm-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+}
+
+.cbgm-tag {
+    flex: none;
+    padding: 1px 7px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 999px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0.85;
+}
+
+.cbgm-tag-ok {
+    color: var(--SmartThemeQuoteColor, #7cc);
+    border-color: currentColor;
+}
+
+.cbgm-reason {
+    margin-top: 5px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.cbgm-hint {
+    padding: 4px 0;
+    opacity: 0.8;
+}
+
+.cbgm-status {
+    padding: 4px 12px 0;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.cbgm-status.cbgm-error {
+    color: var(--warning, #e8a33d);
+    opacity: 1;
+}
+
+.cbgm-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 8px;
+}
+
+.cbgm-vol-icon {
+    margin-left: auto;
+    padding: 0 4px;
+    opacity: 0.6;
+    font-size: 12px;
+}
+
+.cbgm-ctrl .cbgm-vol {
+    width: 72px;
+    min-width: 0;
+    margin: 0;
+}
+
+.cbgm-tabs {
+    display: flex;
+    flex: none;
+    border-top: 1px solid var(--SmartThemeBorderColor, #555);
+}
+
+.cbgm-tab {
+    flex: 1;
+    padding: 6px 0;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.6;
+    border-bottom: 2px solid transparent;
+}
+
+.cbgm-tab-on {
+    opacity: 1;
+    font-weight: 600;
+    border-bottom-color: var(--SmartThemeQuoteColor, #7cc);
+}
+
+.cbgm-list {
+    min-height: 44px;
+    max-height: min(190px, 28dvh);
+    overflow-y: auto;
+}
+
+.cbgm-list-mood,
+.cbgm-list-empty,
+.cbgm-list-foot {
+    padding: 8px 12px;
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.cbgm-list-mood {
+    padding-bottom: 2px;
+}
+
+.cbgm-list-foot {
+    text-align: center;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.cbgm-row-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+}
+
+.cbgm-row-item:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 10%, transparent);
+}
+
+.cbgm-star {
+    flex: none;
+    margin: -4px -4px -4px -6px;
+    padding: 4px 6px;
+    font-size: 12px;
+    opacity: 0.45;
+}
+
+.cbgm-star:hover,
+.cbgm-star-on {
+    opacity: 1;
+}
+
+.cbgm-star-on {
+    color: var(--golden, #f8d300);
+}
+
+.cbgm-row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cbgm-row-name b {
+    font-weight: 600;
+}
+
+.cbgm-row-name span,
+.cbgm-row-side {
+    opacity: 0.65;
+    font-size: 12px;
+}
+
+.cbgm-row-side {
+    flex: none;
+    white-space: nowrap;
+}
+
+/* ── 메시지 본문 맨 위 곡 카드 ── */
+/* 뼈대는 하나이고, 모양은 .cbgm-card--{pill|player|line|vinyl|bar}로 바꾼다. */
+
+.cbgm-card {
+    --cbgm-ink: var(--SmartThemeBodyColor, #333);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto 12px;
+    padding: 6px 14px 6px 6px;
+    color: var(--cbgm-ink);
+    background: color-mix(in srgb, var(--cbgm-ink) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--cbgm-ink) 14%, transparent);
+    border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    font-size: 0.85em;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1.3;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.cbgm-card span {
+    color: inherit;
+    font-style: normal;
+}
+
+.cbgm-card:hover,
+.cbgm-card-on {
+    border-color: color-mix(in srgb, var(--cbgm-ink) 28%, transparent);
+}
+
+.cbgm-card-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 2.5em;
+    height: 2.5em;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--cbgm-ink) 12%, transparent);
+    transition: background 0.15s;
+}
+
+.cbgm-card-btn > span {
+    font-size: 0.9em;
+}
+
+/* 재생 세모는 무게중심이 왼쪽에 있어 조금 밀어 가운데로 보이게 한다. */
+.cbgm-card-btn > .fa-play {
+    transform: translateX(1px);
+}
+
+.cbgm-card-name {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cbgm-card-title,
+.cbgm-card-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cbgm-card-title {
+    font-weight: 600;
+}
+
+.cbgm-card-artist {
+    font-size: 0.88em;
+    opacity: 0.6;
+}
+
+.cbgm-card-genre {
+    flex: none;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.82em;
+    background: color-mix(in srgb, var(--cbgm-ink) 9%, transparent);
+    opacity: 0.8;
+}
+
+/* 모양에 따라 쓰는 조각들. 기본(알약)에서는 숨긴다. */
+.cbgm-card-art,
+.cbgm-card-sub,
+.cbgm-card-bar {
+    display: none;
+}
+
+/* 재생 중에만 보이는 움직이는 막대 */
+.cbgm-card-eq {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    flex: none;
+    height: 1em;
+}
+
+.cbgm-card-on .cbgm-card-eq {
+    display: flex;
+}
+
+.cbgm-card-eq span {
+    width: 2.5px;
+    height: 100%;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.7;
+    transform-origin: bottom;
+    animation: cbgm-eq 0.9s ease-in-out infinite;
+}
+
+.cbgm-card-eq span:nth-child(2) { animation-delay: -0.3s; }
+.cbgm-card-eq span:nth-child(3) { animation-delay: -0.6s; }
+
+@keyframes cbgm-eq {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(1); }
+}
+
+/* 직접 붙인 카드를 떼는 단추 */
+.cbgm-card .cbgm-card-x {
+    flex: none;
+    order: 9;
+    margin: -4px -8px -4px -4px;
+    padding: 4px 6px;
+    font-size: 0.8em;
+    opacity: 0.35;
+}
+
+.cbgm-card .cbgm-card-x:hover {
+    opacity: 1;
+}
+
+/* 알약·진행 막대: 재생 중에는 단추를 글자색으로 채우고 아이콘은 반대색으로 뒤집는다. */
+.cbgm-card--pill.cbgm-card-on .cbgm-card-btn,
+.cbgm-card--bar.cbgm-card-on .cbgm-card-btn {
+    background: var(--cbgm-ink);
+}
+
+.cbgm-card--pill.cbgm-card-on .cbgm-card-btn > span,
+.cbgm-card--bar.cbgm-card-on .cbgm-card-btn > span {
+    filter: invert(1) grayscale(1) contrast(9);
+}
+
+/* 미니 플레이어·한 줄·LP판·진행 막대는 장르를 가수 옆에 잇는다. */
+.cbgm-card--player .cbgm-card-sub,
+.cbgm-card--line .cbgm-card-sub,
+.cbgm-card--vinyl .cbgm-card-sub,
+.cbgm-card--bar .cbgm-card-sub {
+    display: inline;
+}
+
+.cbgm-card--player .cbgm-card-genre,
+.cbgm-card--line .cbgm-card-genre,
+.cbgm-card--vinyl .cbgm-card-genre,
+.cbgm-card--bar .cbgm-card-genre {
+    display: none;
+}
+
+/* 미니 플레이어 */
+.cbgm-card--player {
+    gap: 12px;
+    min-width: min(16em, 100%);
+    padding: 8px 12px 8px 8px;
+    border-radius: 14px;
+}
+
+.cbgm-card--player .cbgm-card-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 3.2em;
+    height: 3.2em;
+    border-radius: 10px;
+    font-size: 1.05em;
+    background: color-mix(in srgb, var(--cbgm-ink) 14%, transparent);
+}
+
+.cbgm-card--player .cbgm-card-name {
+    flex: 1;
+}
+
+.cbgm-card--player .cbgm-card-btn {
+    order: 5;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--cbgm-ink) 22%, transparent);
+}
+
+/* 재생한 적 있는 곡은 앨범 자리에 YouTube 썸네일을 가운데 정사각형으로 잘라 넣는다. */
+.cbgm-card--player.cbgm-card-thumb .cbgm-card-art {
+    background: var(--cbgm-thumb) center / cover no-repeat;
+}
+
+.cbgm-card--player.cbgm-card-thumb .cbgm-card-art > span {
+    display: none;
+}
+
+/* LP판은 가운데 딱지를 키워 썸네일을 넣는다. */
+.cbgm-card--vinyl.cbgm-card-thumb .cbgm-card-art > span {
+    width: 1.9em;
+    height: 1.9em;
+    background: var(--cbgm-thumb) center / cover no-repeat;
+}
+
+/* 한 줄 글자 */
+.cbgm-card--line {
+    gap: 6px;
+    padding: 0 2px 6px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--cbgm-ink) 20%, transparent);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.cbgm-card--line:hover,
+.cbgm-card--line.cbgm-card-on {
+    border-bottom-color: color-mix(in srgb, var(--cbgm-ink) 45%, transparent);
+}
+
+.cbgm-card--line .cbgm-card-btn {
+    width: 1.4em;
+    height: 1.4em;
+    background: none;
+}
+
+.cbgm-card--line .cbgm-card-name {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+}
+
+/* LP판 */
+.cbgm-card--vinyl {
+    gap: 12px;
+    padding: 6px 12px 6px 6px;
+}
+
+.cbgm-card--vinyl .cbgm-card-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 3.4em;
+    height: 3.4em;
+    border-radius: 50%;
+    background: repeating-radial-gradient(circle, #2b2b2b 0 2px, #3d3d3d 2px 3px);
+}
+
+/* 가운데 딱지와 구멍. 음표 아이콘 글리프는 지우고 동그라미로 쓴다. */
+.cbgm-card--vinyl .cbgm-card-art > span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3em;
+    height: 1.3em;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor, #8a94c8);
+}
+
+.cbgm-card--vinyl .cbgm-card-art > span::before {
+    content: "";
+    width: 0.3em;
+    height: 0.3em;
+    border-radius: 50%;
+    background: #2b2b2b;
+}
+
+.cbgm-card--vinyl.cbgm-card-on .cbgm-card-art {
+    animation: cbgm-spin 3s linear infinite;
+}
+
+.cbgm-card--vinyl .cbgm-card-btn {
+    order: 5;
+    width: 2em;
+    height: 2em;
+    background: none;
+}
+
+.cbgm-card--vinyl .cbgm-card-eq {
+    display: none;
+}
+
+/* 진행 막대 */
+.cbgm-card--bar {
+    flex-wrap: wrap;
+    min-width: min(16em, 100%);
+    padding: 10px 12px;
+    border-radius: 14px;
+}
+
+.cbgm-card--bar .cbgm-card-name {
+    flex: 1;
+}
+
+.cbgm-card--bar .cbgm-card-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 100%;
+    order: 10;
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+.cbgm-card-track {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--cbgm-ink) 20%, transparent);
+}
+
+.cbgm-card-track > span {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--cbgm-ink);
+    transition: width 0.3s linear;
+}
+
+/* ── 설정 서랍 ── */
+
+.cbgm-settings h4 {
+    margin: 14px 0 4px;
+}
+
+.cbgm-settings small {
+    display: block;
+    opacity: 0.75;
+    margin-bottom: 4px;
+}
+
+.cbgm-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+/* 실리태번의 .menu_button은 width: min-content라 낱말마다 줄이 바뀌어 세로로 길어진다. 한 줄로 둔다. */
+.cbgm-settings .menu_button {
+    width: auto;
+    margin: 0;
+    padding: 4px 10px;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.cbgm-genres {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 2px 8px;
+    margin: 6px 0;
+}
+
+.cbgm-settings .cbgm-num {
+    display: inline-block;
+    width: 58px;
+    margin: 0 4px;
+    text-align: center;
+}
+
+.cbgm-nums label {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+}
