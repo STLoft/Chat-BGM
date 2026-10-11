@@ -55,7 +55,6 @@ const DEFAULTS = Object.freeze({
     cardAutoPlay: false,
     cardOnPick: true,
     cardStyle: 'pill',
-    cardRemove: false,
     cardEvery: 6,
 });
 
@@ -830,6 +829,50 @@ async function attachToMessage(track) {
     toast('success', `#${id} 메시지에 "${track.title}" 카드를 붙였습니다.`);
 }
 
+// 카드를 꾹 누르거나 우클릭하면 뗄지 묻는다. 메시지를 꾹 눌러 메뉴를 띄우는 확장이 함께 반응하지 않게 여기서 막는다.
+function bindCardHold(card) {
+    let timer = 0;
+    let start = null;
+    let lastAsk = 0;
+    const cancel = () => { clearTimeout(timer); timer = 0; };
+    const ask = () => {
+        cancel();
+        // 휴대폰에서는 꾹 누르면 contextmenu도 함께 오므로 한 번만 받는다.
+        if (Date.now() - lastAsk < 1000) return;
+        lastAsk = Date.now();
+        card.dataset.held = '1';
+        setTimeout(() => delete card.dataset.held, 1500);
+        confirmDetach(Number(card.dataset.mesid), card.dataset.title);
+    };
+    card.addEventListener('pointerdown', (e) => {
+        if (e.button) return;
+        start = { x: e.clientX, y: e.clientY };
+        cancel();
+        timer = setTimeout(ask, 550);
+    });
+    card.addEventListener('pointermove', (e) => {
+        if (timer && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+    });
+    for (const name of ['pointerup', 'pointercancel', 'pointerleave']) card.addEventListener(name, cancel);
+    card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ask();
+    });
+}
+
+async function confirmDetach(messageId, title) {
+    const c = ctx();
+    const message = c.chat?.[messageId];
+    if (!message) return;
+    const fromReply = !message.extra?.chat_bgm;
+    const question = `"${title}" 카드를 뗄까요?${fromReply ? '\n답장에 적힌 <bgm …> 줄이 지워지며 되돌릴 수 없습니다.' : ''}`;
+    let yes;
+    if (c.callGenericPopup && c.POPUP_TYPE) yes = (await c.callGenericPopup(esc(question).replace(/\n/g, '<br>'), c.POPUP_TYPE.CONFIRM)) === (c.POPUP_RESULT?.AFFIRMATIVE ?? 1);
+    else yes = window.confirm(question);
+    if (yes) detachCard(messageId);
+}
+
 // 직접 붙인 카드는 extra에서 지우고, 모델이 답장에 적은 카드는 본문에서 <bgm> 태그를 지운다.
 function detachCard(messageId) {
     const message = ctx().chat?.[messageId];
@@ -926,7 +969,8 @@ function renderCards() {
             card.dataset.mesid = String(id);
             if (track.direct) card.dataset.vid = track.vid;
             // 본문 안의 <i>·<b>는 테마가 기울임과 색을 입히므로 span만 쓴다.
-            card.title = '눌러서 재생·일시정지';
+            card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 카드 떼기';
+            bindCardHold(card);
             // 모양(알약·미니 플레이어·한 줄·LP판·진행 막대)은 같은 뼈대를 두고 CSS로만 바꾼다.
             card.innerHTML = `
                 <span class="cbgm-card-art"><span class="fa-solid fa-music"></span></span>
@@ -937,8 +981,7 @@ function renderCards() {
                 </span>
                 ${track.genre ? `<span class="cbgm-card-genre">${esc(track.genre)}</span>` : ''}
                 <span class="cbgm-card-eq"><span></span><span></span><span></span></span>
-                <span class="cbgm-card-bar"><span class="cbgm-card-pos">0:00</span><span class="cbgm-card-track"><span></span></span><span class="cbgm-card-dur">0:00</span></span>
-                <span class="cbgm-card-x fa-solid fa-xmark" title="카드 떼기"></span>`;
+                <span class="cbgm-card-bar"><span class="cbgm-card-pos">0:00</span><span class="cbgm-card-track"><span></span></span><span class="cbgm-card-dur">0:00</span></span>`;
             host.prepend(card);
         }
         if (on && message && /<\/?bgm\b/i.test(message.mes || '')) stripTagText(mes.querySelector('.mes_text'));
@@ -1407,7 +1450,8 @@ function addMessageButton() {
     });
     jQuery(document).on('click', '.cbgm-card', function (e) {
         if (!S().enabled) return;
-        if (e.target.closest?.('.cbgm-card-x')) return S().cardRemove ? detachCard(Number(this.dataset.mesid)) : undefined;
+        // 꾹 눌러 떼기 창을 띄운 뒤 손을 떼면 click이 따라오므로 그 한 번은 넘긴다.
+        if (this.dataset.held) { delete this.dataset.held; return; }
         const track = trackFields({ artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, direct: !!this.dataset.vid, vid: this.dataset.vid });
         // 이미 걸려 있는 곡이면 재생·일시정지만 바꾼다.
         if (st.current && nk(trackName(st.current)) === nk(trackName(track))) onIconTap();
@@ -1429,7 +1473,6 @@ function applySettings() {
         stopAll();
         closePanel();
     }
-    document.body.classList.toggle('cbgm-show-x', S().enabled && S().cardRemove);
     updateInjection();
     scheduleCards();
     syncIcon();
@@ -1506,9 +1549,7 @@ function addSettingsDrawer() {
                 </select>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardAutoPlay"><span>카드가 붙은 답장이 오면 그 곡을 자동으로 틀기 (끄면 카드를 눌렀을 때만)</span></label>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardOnPick"><span>메시지의 <i class="fa-solid fa-music"></i> 단추로 추천받은 곡을 그 메시지에 카드로 남기기</span></label>
-                <label class="checkbox_label"><input type="checkbox" data-key="cardRemove"><span>카드에 삭제(✕) 버튼 보기</span></label>
-                <small>끄면 메시지를 편집해 <code>&lt;bgm …&gt;</code> 줄을 지워 카드를 뗍니다.
-                <i class="fa-solid fa-music"></i> 단추로 붙인 카드는 본문에 적히지 않으므로 이 옵션을 켜야 뗄 수 있습니다.</small>
+                <small>카드를 꾹 누르면(PC는 우클릭) 그 카드를 뗄 수 있습니다.</small>
 
                 <div class="cbgm-row">
                     <div class="menu_button" id="cbgm_clear_btn">재생 기록·검색 기억 지우기</div>
@@ -1582,7 +1623,6 @@ jQuery(() => {
     addMessageButton();
     addSettingsDrawer();
     bindEvents();
-    document.body.classList.toggle('cbgm-show-x', S().enabled && S().cardRemove);
     watchIconHost();
     watchChat();
     setInterval(renderCardProgress, 1000);

@@ -400,10 +400,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    position: relative;
     width: fit-content;
-    /* 바깥에 놓이는 떼기 단추가 말풍선 밖으로 나가지 않게 양옆을 비워 둔다. */
-    max-width: calc(100% - 3.6em);
+    max-width: 100%;
     margin: 0 auto 12px;
     padding: 6px 14px 6px 6px;
     color: var(--cbgm-ink);
@@ -418,6 +416,8 @@
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -520,29 +520,6 @@
     50% { transform: scaleY(1); }
 }
 
-/* 카드를 떼는 단추. 테두리 밖 오른쪽에 둔다. 가운데 정렬에는 끼어들지 않는다.
-   설정의 "카드에 삭제(✕) 버튼 보기"를 켰을 때만 보인다. */
-.cbgm-card .cbgm-card-x {
-    display: none;
-    position: absolute;
-    left: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    margin-left: 2px;
-    padding: 6px;
-    font-size: 0.8em;
-    opacity: 0.3;
-    transition: opacity 0.15s;
-}
-
-body.cbgm-show-x .cbgm-card .cbgm-card-x {
-    display: block;
-}
-
-.cbgm-card .cbgm-card-x:hover {
-    opacity: 1;
-}
-
 /* 알약·진행 막대: 재생 중에는 단추를 글자색으로 채우고 아이콘은 반대색으로 뒤집는다. */
 .cbgm-card--pill.cbgm-card-on .cbgm-card-btn,
 .cbgm-card--bar.cbgm-card-on .cbgm-card-btn {
@@ -572,7 +549,7 @@ body.cbgm-show-x .cbgm-card .cbgm-card-x {
 /* 미니 플레이어 */
 .cbgm-card--player {
     gap: 12px;
-    min-width: min(16em, calc(100% - 3.6em));
+    min-width: min(16em, 100%);
     padding: 8px 12px 8px 8px;
     border-radius: 14px;
 }
@@ -697,7 +674,7 @@ body.cbgm-show-x .cbgm-card .cbgm-card-x {
 /* 진행 막대 */
 .cbgm-card--bar {
     flex-wrap: wrap;
-    min-width: min(16em, calc(100% - 3.6em));
+    min-width: min(16em, 100%);
     padding: 10px 12px;
     border-radius: 14px;
 }
