@@ -56,6 +56,7 @@ const DEFAULTS = Object.freeze({
     cardOnPick: true,
     cardStyle: 'pill',
     cardRemove: false,
+    cardEvery: 6,
 });
 
 const DEFAULT_GENRES = ['ballad', 'kindie', 'pop', 'ost'];
@@ -730,11 +731,35 @@ function onChatChanged() {
 
 const INJECT_KEY = 'chat_bgm_card';
 
-function updateInjection() {
+// 이번 답장이 카드를 넣을 차례인지. 마지막으로 카드가 붙은 답장 뒤로 답장이 몇 개 지났는지 채팅에서 센다.
+// type은 생성 종류. 스와이프·다시 쓰기는 마지막 답장을 새로 쓰는 것이므로 그 답장은 빼고 센다.
+function cardDue(type) {
+    const every = clamp(S().cardEvery, 1, 99);
+    if (every <= 1) return true;
+    const chat = ctx().chat || [];
+    let end = chat.length - 1;
+    if (type === 'swipe' || type === 'regenerate') {
+        while (end >= 0 && (chat[end].is_user || chat[end].is_system)) end--;
+        end--;
+    }
+    let since = 0;
+    for (let i = end; i >= 0; i--) {
+        const m = chat[i];
+        if (!m || m.is_user || m.is_system) continue;
+        if (/<bgm\b/i.test(m.mes || '')) return since >= every - 1;
+        since++;
+    }
+    return true;
+}
+
+function updateInjection(type) {
     const s = S();
     const allowed = allowedGenres();
     let text = '';
-    if (s.enabled && s.card && allowed.length) {
+    if (s.enabled && s.card && allowed.length && !cardDue(typeof type === 'string' ? type : '')) {
+        // 앞선 답장들에 태그가 남아 있어 모델이 따라 적기 쉬우므로, 차례가 아닐 때는 적지 말라고 알린다.
+        text = '[Background music tag]\nDo not add a <bgm> tag to this reply.';
+    } else if (s.enabled && s.card && allowed.length) {
         text = [
             '[Background music tag]',
             'At the very end of your reply, on its own final line, add exactly one tag naming a real, commercially released song that fits this scene as background music:',
@@ -1451,9 +1476,9 @@ function addSettingsDrawer() {
                 </div>
 
                 <h4>곡 카드</h4>
-                <label class="checkbox_label"><input type="checkbox" data-key="card"><span>답장에 곡 카드 넣기</span></label>
+                <label class="checkbox_label"><input type="checkbox" data-key="card"><span>캐릭터 답장 <input type="number" class="text_pole cbgm-num" data-key="cardEvery" min="1" max="99">개마다 곡 카드 넣기</span></label>
                 <small>답장을 쓰는 모델이 장면에 맞는 곡을 하나 골라 답장 끝에 적고, 그 메시지 맨 위에 곡 카드를 그립니다.
-                추천용 호출이 따로 들지 않는 대신 매 답장 프롬프트에 지시문과 장르 목록이 추가됩니다. 체크한 장르에서 벗어난 곡은 카드로 그리지 않습니다.</small>
+                추천용 호출이 따로 들지 않는 대신 카드를 넣을 차례의 답장 프롬프트에 지시문과 장르 목록이 추가됩니다. 숫자를 1로 두면 답장마다 넣습니다. 체크한 장르에서 벗어난 곡은 카드로 그리지 않습니다.</small>
                 <label for="cbgm_card_style">카드 모양</label>
                 <select class="text_pole" id="cbgm_card_style" data-key="cardStyle">
                     ${Object.entries(CARD_STYLES).map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}
