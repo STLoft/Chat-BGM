@@ -125,6 +125,12 @@ function S() {
     delete s.iconRow;
     if (!s.cache || typeof s.cache !== 'object') s.cache = {};
     if (s.pos && (typeof s.pos.x !== 'number' || typeof s.pos.y !== 'number')) s.pos = null;
+    // 0.11.0 이전에는 한 기기에서 재생 오류가 난 곡을 "못 찾는 곡"으로 적어 모든 기기에서 건너뛰었다.
+    // 그 기록을 가려낼 수 없으므로 "못 찾는 곡" 기록을 한 번 모두 비운다.
+    if (!s.cacheFix1) {
+        for (const [key, value] of Object.entries(s.cache)) if (!value?.id) delete s.cache[key];
+        s.cacheFix1 = true;
+    }
     return s;
 }
 
@@ -570,7 +576,7 @@ async function startVideo(track, video) {
         if (IS_IOS) askTapVideo();
         else if (!st.panelOpen) toast('info', '브라우저가 자동 재생을 막았습니다. 음표를 한 번 눌러 주세요.');
         render();
-    }, 4000);
+    }, IS_IOS ? 1500 : 4000);
     setStatus('');
 }
 
@@ -678,11 +684,19 @@ const trackFields = (t) => ({
     title: t.title,
     genre: t.genre,
     reason: t.reason || '',
-    ...(t.direct && t.vid ? { direct: true, vid: t.vid } : {}),
+    // vid: 이미 아는 영상(재생 기록의 곡 등). 있으면 다시 찾지 않고 그 영상을 튼다.
+    // direct: 주소로 직접 넣은 곡. 이름이 아니라 영상으로 같은 곡인지 가린다.
+    ...(t.vid ? { vid: t.vid } : {}),
+    ...(t.direct && t.vid ? { direct: true } : {}),
 });
 
 async function resolveVideo(track) {
-    if (track.direct && track.vid) return { id: track.vid, title: track.title, channel: track.artist, kind: '' };
+    // 재생 기록이나 카드처럼 영상을 이미 아는 곡은 검색 기억과 상관없이 그 영상을 그대로 튼다.
+    // 이 기기에서 막힌 영상이면 평소처럼 찾는다(대체 영상 찾기가 켜져 있을 때).
+    if (track.vid && (track.direct || !deviceData().blocked.includes(track.vid))) {
+        const kind = track.direct ? '' : S().played.find((p) => p.vid === track.vid)?.kind || '';
+        return { id: track.vid, title: track.title, channel: track.artist, kind };
+    }
     return findVideo(track);
 }
 
@@ -728,7 +742,7 @@ function nameDirectTrack() {
 
 // 카드·기록·추천 목록에서 고른 곡 하나를 바로 튼다.
 async function playTrack(track) {
-    if (!track.direct && !S().apiKey) return openSearch(track);
+    if (!track.vid && !S().apiKey) return openSearch(track);
     let video;
     try {
         video = await resolveVideo(track);
@@ -945,7 +959,7 @@ function onMenuOutside(e) {
 // 카드를 꾹 눌렀을 때 뜨는 작은 메뉴. YouTube 줄은 진짜 링크라서 휴대폰에서는 YouTube 앱으로 넘어간다.
 function openCardMenu(card) {
     closeCardMenu();
-    const track = trackFields({ artist: card.dataset.artist, title: card.dataset.title, genre: card.dataset.genre, direct: !!card.dataset.vid, vid: card.dataset.vid });
+    const track = trackFields({ artist: card.dataset.artist, title: card.dataset.title, genre: card.dataset.genre, direct: !!card.dataset.direct, vid: card.dataset.vid });
     const vid = knownVideoId(track);
     const url = vid
         ? `https://www.youtube.com/watch?v=${vid}`
@@ -1076,7 +1090,8 @@ function renderCards() {
             card.dataset.title = track.title;
             card.dataset.genre = track.genre;
             card.dataset.mesid = String(id);
-            if (track.direct) card.dataset.vid = track.vid;
+            if (track.vid) card.dataset.vid = track.vid;
+            if (track.direct) card.dataset.direct = '1';
             // 본문 안의 <i>·<b>는 테마가 기울임과 색을 입히므로 span만 쓴다.
             card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 메뉴';
             bindCardHold(card);
@@ -1603,7 +1618,7 @@ function addMessageButton() {
         if (!S().enabled) return;
         // 꾹 눌러 메뉴를 띄운 뒤 손을 떼면 click이 따라오므로 그 한 번은 넘긴다.
         if (this.dataset.held) { delete this.dataset.held; return; }
-        const track = trackFields({ artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, direct: !!this.dataset.vid, vid: this.dataset.vid });
+        const track = trackFields({ artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, direct: !!this.dataset.direct, vid: this.dataset.vid });
         // 이미 걸려 있는 곡이면 재생·일시정지만 바꾼다.
         if (st.current && nk(trackName(st.current)) === nk(trackName(track))) onIconTap();
         else playTrack(track);
