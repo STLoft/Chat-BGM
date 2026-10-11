@@ -57,6 +57,7 @@ const DEFAULTS = Object.freeze({
     cardStyle: 'pill',
     cardEvery: 6,
     iconOrder: 0,
+    altVideo: true,
     iconSet: 0,
 });
 
@@ -395,6 +396,8 @@ async function findVideo(track) {
     if (usable(alt)) return alt;
     // 함께 쓰는 기억의 영상이 이 기기에서만 막힌 경우에는 그 기억을 건드리지 않고 다른 영상을 찾는다.
     const blockedHere = !!hit?.id;
+    // 대체 영상 찾기를 꺼 두었으면 막힌 곡은 이 기기에서 건너뛴다.
+    if (blockedHere && !s.altVideo) return null;
     const miss = blockedHere ? alt : hit;
     if (miss && !miss.id && Date.now() - (miss.t || 0) < MISS_TTL) return null;
 
@@ -501,7 +504,7 @@ function onPlayerError(event) {
         setStatus('이 영상은 틀 수 없습니다. 주소가 맞는지, 다른 사이트에서의 재생이 막힌 영상은 아닌지 확인해 주세요.', true);
         return;
     }
-    // 이 기기에서 막힌 영상으로 적어 두고, 같은 곡의 다른 영상을 한 번 더 찾아 본다.
+    // 이 기기에서 막힌 영상으로 적어 둔다. 설정이 켜져 있으면 같은 곡의 다른 영상을 한 번 더 찾아 본다.
     const failed = st.current;
     st.current = null;
     if (failed?.video?.id) {
@@ -513,7 +516,7 @@ function onPlayerError(event) {
         setStatus('재생할 수 없는 영상이 이어져 멈췄습니다. ✨로 다시 추천받아 보세요.', true);
         return;
     }
-    if (failed) st.queue.unshift(trackFields(failed));
+    if (failed && S().altVideo) st.queue.unshift(trackFields(failed));
     playNext();
 }
 
@@ -1677,6 +1680,8 @@ function addSettingsDrawer() {
                 <small>Google Cloud 콘솔에서 YouTube Data API v3를 사용 설정하고 API 키를 만들어 넣습니다.
                 검색 한 번에 할당량 100을 쓰며 기본 한도는 하루 10,000(약 100곡)입니다. 한 번 찾은 곡은 기억해 두고 다시 검색하지 않습니다.</small>
                 <label class="checkbox_label"><input type="checkbox" data-key="officialOnly"><span>공식 음원·공식 채널 영상만 재생 (못 찾으면 다음 후보로)</span></label>
+                <label class="checkbox_label"><input type="checkbox" data-key="altVideo"><span>재생이 막힌 영상은 같은 곡의 다른 영상 찾기</span></label>
+                <small>같은 영상도 기기나 브라우저에 따라 재생이 막히기도 합니다. 켜 두면 그럴 때 다른 공식 영상을 찾아 틀고(곡마다 검색 할당량 100 추가), 끄면 그 곡은 그 기기에서 건너뜁니다.</small>
 
                 <h4>추천</h4>
                 <label for="cbgm_profile">분석에 쓸 연결</label>
