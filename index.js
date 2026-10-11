@@ -709,10 +709,19 @@ function attachCard(messageId, track) {
     scheduleCards();
 }
 
+// 직접 붙인 카드는 extra에서 지우고, 모델이 답장에 적은 카드는 본문에서 <bgm> 태그를 지운다.
 function detachCard(messageId) {
     const message = ctx().chat?.[messageId];
-    if (!message?.extra?.chat_bgm) return;
-    delete message.extra.chat_bgm;
+    if (!message) return;
+    if (message.extra?.chat_bgm) {
+        delete message.extra.chat_bgm;
+    } else {
+        const strip = (text) => String(text ?? '').replace(/\s*<bgm\b[^>]*>(\s*<\/bgm>)?/gi, '').trimEnd();
+        if (!/<bgm\b/i.test(message.mes || '')) return;
+        message.mes = strip(message.mes);
+        const swipe = message.swipe_id;
+        if (Array.isArray(message.swipes) && typeof message.swipes[swipe] === 'string') message.swipes[swipe] = strip(message.swipes[swipe]);
+    }
     ctx().saveChat?.();
     scheduleCards();
 }
@@ -807,7 +816,7 @@ function renderCards() {
                 ${track.genre ? `<span class="cbgm-card-genre">${esc(track.genre)}</span>` : ''}
                 <span class="cbgm-card-eq"><span></span><span></span><span></span></span>
                 <span class="cbgm-card-bar"><span class="cbgm-card-pos">0:00</span><span class="cbgm-card-track"><span></span></span><span class="cbgm-card-dur">0:00</span></span>
-                ${kept ? '<span class="cbgm-card-x fa-solid fa-xmark" title="카드 떼기"></span>' : ''}`;
+                <span class="cbgm-card-x fa-solid fa-xmark" title="카드 떼기"></span>`;
             host.prepend(card);
         }
         if (on && message && /<\/?bgm\b/i.test(message.mes || '')) stripTagText(mes.querySelector('.mes_text'));
