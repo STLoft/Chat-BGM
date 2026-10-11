@@ -90,6 +90,7 @@ const st = {
     hintTimer: 0,
     needTap: false,
     tapVideo: false,
+    failed: null,
     panelOpen: false,
     tab: 'queue',
     icon: null,
@@ -368,7 +369,7 @@ function cachePut(key, value) {
 // 같은 영상도 기기·브라우저에 따라 재생이 막히기도 한다. 검색 기억(설정)은 기기끼리 함께 쓰므로,
 // 막힌 영상과 그 대신 쓸 영상은 설정이 아니라 이 브라우저의 localStorage에만 적는다.
 
-const DEVICE_KEY = 'chat_bgm_device';
+const DEVICE_KEY = 'chat_bgm_device_v2';
 
 function deviceData() {
     try {
@@ -414,7 +415,8 @@ async function findVideo(track) {
         videoEmbeddable: 'true',
         videoSyndicated: 'true',
         maxResults: '8',
-        q: `${track.artist} ${track.title} ${s.instrumentalOnly ? 'official' : 'official audio'}`,
+        // 막힌 영상의 대신을 찾을 때는 음원 영상 말고 공식 뮤직비디오가 걸리도록 검색어를 바꾼다.
+        q: `${track.artist} ${track.title} ${blockedHere ? 'official video' : s.instrumentalOnly ? 'official' : 'official audio'}`,
         key: s.apiKey,
     });
     let response;
@@ -495,6 +497,7 @@ function onPlayerState(event) {
         st.errStreak = 0;
         st.needTap = false;
         st.tapVideo = false;
+        st.failed = null;
         clearTimeout(st.hintTimer);
         nameDirectTrack();
     }
@@ -510,20 +513,32 @@ function onPlayerError(event) {
         setStatus('이 영상은 틀 수 없습니다. 주소가 맞는지, 다른 사이트에서의 재생이 막힌 영상은 아닌지 확인해 주세요.', true);
         return;
     }
-    // 이 기기에서 막힌 영상으로 적어 둔다. 설정이 켜져 있으면 같은 곡의 다른 영상을 한 번 더 찾아 본다.
+    const code = Number(event?.data) || 0;
     const failed = st.current;
     st.current = null;
+    // 100: 지워졌거나 비공개, 101·150: 이 기기·사이트에서의 재생을 권리자가 막음. 이런 영상만 이 기기에서 막힌 것으로 적는다.
+    // 그 밖의 오류(2·5 등)는 잠깐의 문제일 수 있으므로 적지 않는다.
+    const refused = code === 100 || code === 101 || code === 150;
     if (failed?.video?.id) {
-        const device = deviceData();
-        if (!device.blocked.includes(failed.video.id)) device.blocked.push(failed.video.id);
-        saveDeviceData(device);
+        st.failed = { title: failed.title, id: failed.video.id, code };
+        if (refused) {
+            const device = deviceData();
+            if (!device.blocked.includes(failed.video.id)) device.blocked.push(failed.video.id);
+            saveDeviceData(device);
+        }
     }
     if (++st.errStreak > 4) {
         setStatus('재생할 수 없는 영상이 이어져 멈췄습니다. ✨로 다시 추천받아 보세요.', true);
         return;
     }
-    if (failed && S().altVideo) st.queue.unshift(trackFields(failed));
-    playNext();
+    if (failed?.picked) {
+        retryPicked(failed, refused, code);
+        return;
+    }
+    // 막힌 영상이면 같은 곡의 다른 영상을 한 번 더 찾아 본다(설정이 켜져 있을 때).
+    if (failed && refused && S().altVideo) st.queue.unshift(trackFields(failed));
+    if (st.queue.length) playNext();
+    else setStatus(`이 기기에서는 "${failed?.title || '이 곡'}"을(를) 틀 수 없습니다 (YouTube 오류 ${code}).`, true);
 }
 
 async function onTrackEnded() {
@@ -690,10 +705,10 @@ const trackFields = (t) => ({
     ...(t.direct && t.vid ? { direct: true } : {}),
 });
 
-async function resolveVideo(track) {
+async function resolveVideo(track, force = false) {
     // 재생 기록이나 카드처럼 영상을 이미 아는 곡은 검색 기억과 상관없이 그 영상을 그대로 튼다.
-    // 이 기기에서 막힌 영상이면 평소처럼 찾는다(대체 영상 찾기가 켜져 있을 때).
-    if (track.vid && (track.direct || !deviceData().blocked.includes(track.vid))) {
+    // 이 기기에서 막힌 적이 있는 영상은 평소처럼 다시 찾되, 사용자가 그 곡을 직접 눌렀을 때(force)는 한 번 더 틀어 본다.
+    if (track.vid && (track.direct || force || !deviceData().blocked.includes(track.vid))) {
         const kind = track.direct ? '' : S().played.find((p) => p.vid === track.vid)?.kind || '';
         return { id: track.vid, title: track.title, channel: track.artist, kind };
     }
@@ -743,19 +758,41 @@ function nameDirectTrack() {
 // 카드·기록·추천 목록에서 고른 곡 하나를 바로 튼다.
 async function playTrack(track) {
     if (!track.vid && !S().apiKey) return openSearch(track);
+    st.failed = null;
     let video;
     try {
-        video = await resolveVideo(track);
+        video = await resolveVideo(track, true);
     } catch (e) {
         setStatus(e.message, true);
         return;
     }
     if (!video) {
+        const vid = knownVideoId(track);
+        if (vid) st.failed = { title: track.title, id: vid, code: 0 };
         setStatus(`"${track.title}"의 ${S().officialOnly ? '공식 음원' : '영상'}을 YouTube에서 찾지 못했습니다.`, true);
         return;
     }
     st.queue = st.queue.filter((q) => nk(trackName(q)) !== nk(trackName(track)));
-    await startVideo(track, video);
+    // picked: 사용자가 직접 고른 곡. 틀지 못해도 다른 추천곡으로 넘어가지 않고 이유를 알린다.
+    await startVideo({ ...track, picked: true }, video);
+}
+
+// 직접 고른 곡이 재생 오류를 냈을 때: 막힌 영상이면 같은 곡의 다른 영상을 찾아 보고, 없으면 이유를 알린다.
+async function retryPicked(failed, refused, code) {
+    let video = null;
+    if (refused && S().altVideo && S().apiKey) {
+        try {
+            video = await findVideo(trackFields(failed));
+        } catch (e) {
+            setStatus(e.message, true);
+            return;
+        }
+    }
+    if (video && video.id !== failed.video.id) {
+        await startVideo(trackFields(failed), video);
+        return;
+    }
+    setStatus(`이 기기에서는 "${failed.title}"을(를) 틀 수 없습니다 (YouTube 오류 ${code}).`, true);
 }
 
 function stopAll() {
@@ -1551,6 +1588,16 @@ function render() {
     const blocked = st.tapVideo ? '이 기기에서는 영상 화면을 직접 눌러야 재생이 시작됩니다. 위 영상을 한 번 눌러 주세요.' : '브라우저가 자동 재생을 막았습니다. ▶ 를 눌러 주세요.';
     const text = st.status || (st.needTap ? blocked : '');
     status.textContent = text;
+    // 틀지 못한 곡은 YouTube에서 바로 열 수 있게 링크를 붙인다.
+    if (text && st.status && st.statusError && st.failed?.id) {
+        const link = document.createElement('a');
+        link.className = 'cbgm-status-link';
+        link.href = `https://www.youtube.com/watch?v=${st.failed.id}`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'YouTube에서 열기';
+        status.append(' ', link);
+    }
     status.classList.toggle('cbgm-error', !!text && (st.statusError || !st.status));
     status.hidden = !text;
 

@@ -241,6 +241,13 @@
     opacity: 0.85;
 }
 
+.cbgm-status-link,
+.cbgm-status-link:visited {
+    color: inherit;
+    text-decoration: underline;
+    white-space: nowrap;
+}
+
 .cbgm-status.cbgm-error {
     color: var(--warning, #e8a33d);
     opacity: 1;
