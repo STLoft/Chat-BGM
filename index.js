@@ -55,6 +55,7 @@ const DEFAULTS = Object.freeze({
     cardAutoPlay: false,
     cardOnPick: true,
     cardStyle: 'pill',
+    cardRemove: false,
 });
 
 const DEFAULT_GENRES = ['ballad', 'kindie', 'pop', 'ost'];
@@ -1248,7 +1249,7 @@ function addMessageButton() {
     });
     jQuery(document).on('click', '.cbgm-card', function (e) {
         if (!S().enabled) return;
-        if (e.target.closest?.('.cbgm-card-x')) return detachCard(Number(this.dataset.mesid));
+        if (e.target.closest?.('.cbgm-card-x')) return S().cardRemove ? detachCard(Number(this.dataset.mesid)) : undefined;
         const track = { artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, reason: '' };
         // 이미 걸려 있는 곡이면 재생·일시정지만 바꾼다.
         if (st.current && nk(trackName(st.current)) === nk(trackName(track))) onIconTap();
@@ -1270,6 +1271,7 @@ function applySettings() {
         stopAll();
         closePanel();
     }
+    document.body.classList.toggle('cbgm-show-x', S().enabled && S().cardRemove);
     updateInjection();
     scheduleCards();
     syncIcon();
@@ -1346,6 +1348,9 @@ function addSettingsDrawer() {
                 </select>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardAutoPlay"><span>카드가 붙은 답장이 오면 그 곡을 자동으로 틀기 (끄면 카드를 눌렀을 때만)</span></label>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardOnPick"><span>메시지의 <i class="fa-solid fa-music"></i> 단추로 추천받은 곡을 그 메시지에 카드로 남기기</span></label>
+                <label class="checkbox_label"><input type="checkbox" data-key="cardRemove"><span>카드에 삭제(✕) 버튼 보기</span></label>
+                <small>끄면 메시지를 편집해 <code>&lt;bgm …&gt;</code> 줄을 지워 카드를 뗍니다.
+                <i class="fa-solid fa-music"></i> 단추로 붙인 카드는 본문에 적히지 않으므로 이 옵션을 켜야 뗄 수 있습니다.</small>
 
                 <div class="cbgm-row">
                     <div class="menu_button" id="cbgm_clear_btn">재생 기록·검색 기억 지우기</div>
@@ -1419,6 +1424,7 @@ jQuery(() => {
     addMessageButton();
     addSettingsDrawer();
     bindEvents();
+    document.body.classList.toggle('cbgm-show-x', S().enabled && S().cardRemove);
     watchIconHost();
     watchChat();
     setInterval(renderCardProgress, 1000);

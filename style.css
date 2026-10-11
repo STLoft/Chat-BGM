@@ -478,8 +478,10 @@
     50% { transform: scaleY(1); }
 }
 
-/* 카드를 떼는 단추. 테두리 밖 오른쪽에 둔다. 가운데 정렬에는 끼어들지 않는다. */
+/* 카드를 떼는 단추. 테두리 밖 오른쪽에 둔다. 가운데 정렬에는 끼어들지 않는다.
+   설정의 "카드에 삭제(✕) 버튼 보기"를 켰을 때만 보인다. */
 .cbgm-card .cbgm-card-x {
+    display: none;
     position: absolute;
     left: 100%;
     top: 50%;
@@ -489,6 +491,10 @@
     font-size: 0.8em;
     opacity: 0.3;
     transition: opacity 0.15s;
+}
+
+body.cbgm-show-x .cbgm-card .cbgm-card-x {
+    display: block;
 }
 
 .cbgm-card .cbgm-card-x:hover {
