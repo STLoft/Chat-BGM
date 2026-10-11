@@ -356,18 +356,54 @@ function cachePut(key, value) {
     save();
 }
 
+// ── 이 기기에서만 막힌 영상 ──────────────────────────────────────────────
+//
+// 같은 영상도 기기·브라우저에 따라 재생이 막히기도 한다. 검색 기억(설정)은 기기끼리 함께 쓰므로,
+// 막힌 영상과 그 대신 쓸 영상은 설정이 아니라 이 브라우저의 localStorage에만 적는다.
+
+const DEVICE_KEY = 'chat_bgm_device';
+
+function deviceData() {
+    try {
+        const data = JSON.parse(localStorage.getItem(DEVICE_KEY) || '{}');
+        return {
+            blocked: Array.isArray(data.blocked) ? data.blocked : [],
+            alt: data.alt && typeof data.alt === 'object' ? data.alt : {},
+        };
+    } catch {
+        return { blocked: [], alt: {} };
+    }
+}
+
+function saveDeviceData(data) {
+    try {
+        data.blocked = data.blocked.slice(-300);
+        const keys = Object.keys(data.alt);
+        keys.slice(0, Math.max(0, keys.length - 300)).forEach((k) => delete data.alt[k]);
+        localStorage.setItem(DEVICE_KEY, JSON.stringify(data));
+    } catch { /* 저장소를 못 쓰는 브라우저에서는 기억하지 않는다 */ }
+}
+
 async function findVideo(track) {
     const s = S();
     const key = cacheKey(track);
+    const device = deviceData();
+    const usable = (v) => !!v?.id && !device.blocked.includes(v.id);
     const hit = s.cache[key];
-    if (hit?.id) return hit;
-    if (hit && Date.now() - (hit.t || 0) < MISS_TTL) return null;
+    if (usable(hit)) return hit;
+    const alt = device.alt[key];
+    if (usable(alt)) return alt;
+    // 함께 쓰는 기억의 영상이 이 기기에서만 막힌 경우에는 그 기억을 건드리지 않고 다른 영상을 찾는다.
+    const blockedHere = !!hit?.id;
+    const miss = blockedHere ? alt : hit;
+    if (miss && !miss.id && Date.now() - (miss.t || 0) < MISS_TTL) return null;
 
     const params = new URLSearchParams({
         part: 'snippet',
         type: 'video',
         videoCategoryId: '10',
         videoEmbeddable: 'true',
+        videoSyndicated: 'true',
         maxResults: '8',
         q: `${track.artist} ${track.title} ${s.instrumentalOnly ? 'official' : 'official audio'}`,
         key: s.apiKey,
@@ -385,14 +421,16 @@ async function findVideo(track) {
         .map((item, i) => rateVideo(item, i, track))
         .filter((v) => v.id && v.score > 0 && (!s.officialOnly || v.kind))
         .sort((a, b) => b.score - a.score);
-    const best = rated[0];
-    if (!best) {
-        cachePut(key, { id: null });
-        return null;
+    const best = rated.find((v) => !device.blocked.includes(v.id));
+    const video = best ? { id: best.id, title: best.title, channel: best.channel, kind: best.kind } : { id: null };
+    // 이 기기에서 막힌 영상 때문에 고른 결과는 이 기기에만 적는다.
+    if (blockedHere || rated.length !== rated.filter((v) => !device.blocked.includes(v.id)).length) {
+        device.alt[key] = { ...video, t: Date.now() };
+        saveDeviceData(device);
+    } else {
+        cachePut(key, video);
     }
-    const video = { id: best.id, title: best.title, channel: best.channel, kind: best.kind };
-    cachePut(key, video);
-    return video;
+    return best ? video : null;
 }
 
 // ── 플레이어 ─────────────────────────────────────────────────────────────
@@ -463,12 +501,19 @@ function onPlayerError(event) {
         setStatus('이 영상은 틀 수 없습니다. 주소가 맞는지, 다른 사이트에서의 재생이 막힌 영상은 아닌지 확인해 주세요.', true);
         return;
     }
-    if (st.current) cachePut(cacheKey(st.current), { id: null });
+    // 이 기기에서 막힌 영상으로 적어 두고, 같은 곡의 다른 영상을 한 번 더 찾아 본다.
+    const failed = st.current;
     st.current = null;
+    if (failed?.video?.id) {
+        const device = deviceData();
+        if (!device.blocked.includes(failed.video.id)) device.blocked.push(failed.video.id);
+        saveDeviceData(device);
+    }
     if (++st.errStreak > 4) {
         setStatus('재생할 수 없는 영상이 이어져 멈췄습니다. ✨로 다시 추천받아 보세요.', true);
         return;
     }
+    if (failed) st.queue.unshift(trackFields(failed));
     playNext();
 }
 
@@ -1710,6 +1755,7 @@ function addSettingsDrawer() {
         const cur = S();
         clearHistory();
         cur.cache = {};
+        try { localStorage.removeItem(DEVICE_KEY); } catch { /* 저장소를 못 쓰는 브라우저 */ }
         save();
         render();
         toast('success', '재생 기록과 검색 기억을 지웠습니다. 별표를 단 곡은 남겨 두었습니다.');
