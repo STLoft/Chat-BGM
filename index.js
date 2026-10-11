@@ -866,7 +866,7 @@ async function confirmDetach(messageId, title) {
     const message = c.chat?.[messageId];
     if (!message) return;
     const fromReply = !message.extra?.chat_bgm;
-    const question = `"${title}" 카드를 뗄까요?${fromReply ? '\n답장에 적힌 <bgm …> 줄이 지워지며 되돌릴 수 없습니다.' : ''}`;
+    const question = `"${title}" 카드를 삭제할까요?${fromReply ? '\n답장에 적힌 <bgm …> 줄이 지워지며 되돌릴 수 없습니다.' : ''}`;
     let yes;
     if (c.callGenericPopup && c.POPUP_TYPE) yes = (await c.callGenericPopup(esc(question).replace(/\n/g, '<br>'), c.POPUP_TYPE.CONFIRM)) === (c.POPUP_RESULT?.AFFIRMATIVE ?? 1);
     else yes = window.confirm(question);
@@ -969,7 +969,7 @@ function renderCards() {
             card.dataset.mesid = String(id);
             if (track.direct) card.dataset.vid = track.vid;
             // 본문 안의 <i>·<b>는 테마가 기울임과 색을 입히므로 span만 쓴다.
-            card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 카드 떼기';
+            card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 카드 삭제';
             bindCardHold(card);
             // 모양(알약·미니 플레이어·한 줄·LP판·진행 막대)은 같은 뼈대를 두고 CSS로만 바꾼다.
             card.innerHTML = `
@@ -1549,7 +1549,7 @@ function addSettingsDrawer() {
                 </select>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardAutoPlay"><span>카드가 붙은 답장이 오면 그 곡을 자동으로 틀기 (끄면 카드를 눌렀을 때만)</span></label>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardOnPick"><span>메시지의 <i class="fa-solid fa-music"></i> 단추로 추천받은 곡을 그 메시지에 카드로 남기기</span></label>
-                <small>카드를 꾹 누르면(PC는 우클릭) 그 카드를 뗄 수 있습니다.</small>
+                <small>카드를 꾹 누르면(PC는 우클릭) 그 카드를 삭제할 수 있습니다.</small>
 
                 <div class="cbgm-row">
                     <div class="menu_button" id="cbgm_clear_btn">재생 기록·검색 기억 지우기</div>
