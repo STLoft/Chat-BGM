@@ -1231,10 +1231,17 @@ function findIconHost() {
     if (!scope) return { host: $id('leftSendForm'), qr: false };
     // 세트마다 .qr--buttons 칸이 하나씩 있다. 세트를 한 줄로 묶는 설정이면 바깥 칸 안에 세트 칸들이 들어 있으므로,
     // 안에 다른 칸이 없는 맨 안쪽 칸(단추들이 실제로 놓이는 곳)만 고른다.
-    const holders = [...scope.querySelectorAll('.qr--buttons')].filter((el) => !el.querySelector('.qr--buttons'));
+    // 세트가 하나도 없을 때 이 확장이 만들어 둔 칸(.cbgm-qr-holder)은 세트로 세지 않는다.
+    const own = scope.querySelector('.cbgm-qr-holder');
+    const holders = [...scope.querySelectorAll('.qr--buttons')].filter((el) => el !== own && !el.querySelector('.qr--buttons'));
     // iconSet: 0이면 마지막 세트, N이면 앞에서 N번째 세트
     const pick = clamp(S().iconSet, 0, 99);
-    if (holders.length) return { host: holders[pick > 0 ? Math.min(pick, holders.length) - 1 : holders.length - 1], qr: true };
+    if (holders.length) {
+        // 진짜 세트가 생겼으면 만들어 둔 빈 칸은 치운다(아이콘은 곧 세트로 옮겨진다).
+        if (own && ![...own.children].some((el) => el.id !== 'cbgm_qr')) st.staleHolder = own;
+        return { host: holders[pick > 0 ? Math.min(pick, holders.length) - 1 : holders.length - 1], qr: true };
+    }
+    if (own) return { host: own, qr: true };
     const holder = document.createElement('div');
     holder.className = 'qr--buttons cbgm-qr-holder';
     scope.append(holder);
@@ -1252,8 +1259,9 @@ function buildIcon() {
     let start = null;
     let held = false;
     let lastHold = 0;
-    const hold = () => {
-        held = true;
+    const hold = (byMouse = false) => {
+        // 손가락을 떼면 click이 따라오므로 그 한 번은 재생으로 치지 않는다. 마우스 우클릭에는 따라오는 click이 없다.
+        held = !byMouse;
         clearTimeout(timer);
         timer = 0;
         // 휴대폰에서는 꾹 누르면 contextmenu도 함께 오므로 한 번만 받는다.
@@ -1267,13 +1275,13 @@ function buildIcon() {
         held = false;
         start = { x: e.clientX, y: e.clientY };
         cancel();
-        timer = setTimeout(hold, 500);
+        timer = setTimeout(() => hold(), 500);
     });
     icon.addEventListener('pointermove', (e) => {
         if (timer && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
     });
     for (const name of ['pointerup', 'pointercancel', 'pointerleave']) icon.addEventListener(name, cancel);
-    icon.addEventListener('contextmenu', (e) => { e.preventDefault(); hold(); });
+    icon.addEventListener('contextmenu', (e) => { e.preventDefault(); hold(e.pointerType === 'mouse'); });
     icon.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1326,6 +1334,16 @@ function syncIcon() {
     const index = children.indexOf(icon);
     const ahead = index < 0 ? -1 : children.slice(0, index).filter((el) => !el.matches(DOCK_ICONS)).length;
     if (ahead !== wanted) host.insertBefore(icon, real[wanted] || null);
+    if (st.staleHolder) {
+        if (st.staleHolder !== host && !st.staleHolder.children.length) st.staleHolder.remove();
+        st.staleHolder = null;
+    }
+    // 빠른 답장을 떠 있는 창으로 쓰면 그 창 안의 변화는 아래 감시에 잡히지 않으므로 따로 지켜본다.
+    const popout = host.closest('#qr--popout');
+    if (popout && st.watchedPopout !== popout) {
+        st.watchedPopout = popout;
+        st.iconObserver?.observe(popout, { childList: true, subtree: true });
+    }
     icon.classList.toggle('qr--button', qr);
     renderIcon();
 }
@@ -1338,6 +1356,7 @@ function watchIconHost() {
         setTimeout(syncIcon, 50);
     };
     const observer = new MutationObserver(queue);
+    st.iconObserver = observer;
     const form = $id('send_form');
     if (form) observer.observe(form, { childList: true, subtree: true });
     observer.observe(document.body, { childList: true });
