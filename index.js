@@ -1495,7 +1495,7 @@ function render() {
         list.innerHTML = st.queue.length
             ? `${st.mood ? `<div class="cbgm-list-mood"><i class="fa-solid fa-feather"></i> ${esc(st.mood)}</div>` : ''}
                ${st.queue.map((t, i) => listRow(t, i, 'pick', t.genre)).join('')}
-               ${ready ? youtubeFoot(st.queue, '추천곡 모두 YouTube에서 열기') : (S().apiKey ? '<div class="cbgm-list-foot" data-act="findQueue">추천곡 모두 YouTube에서 열기</div>' : '')}`
+               ${ready ? youtubeFoot(st.current ? [st.current, ...st.queue] : st.queue, '추천곡 모두 YouTube에서 열기') : (S().apiKey ? '<div class="cbgm-list-foot" data-act="findQueue">추천곡 모두 YouTube에서 열기</div>' : '')}`
             : '<div class="cbgm-list-empty">대기 중인 추천곡이 없습니다.</div>';
     }
     if (panel.offsetHeight !== before) placePanel();
