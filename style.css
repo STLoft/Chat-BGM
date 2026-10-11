@@ -28,6 +28,20 @@
     opacity: 1;
 }
 
+/* 빠른 답장 버튼은 기본으로 호버 때 진회색(#4d4d4d)이 깔린다. 터치 화면에서는 누른 뒤에도 호버가 남아
+   아이콘이 회색 칸에 묻히므로, 이 아이콘에서는 그 바탕을 끄고 마우스가 있을 때만 옅게 깐다. */
+#qr--bar > .qr--buttons .cbgm-qr.qr--button:hover,
+#qr--popout > .qr--body > .qr--buttons .cbgm-qr.qr--button:hover {
+    background-color: transparent;
+}
+
+@media (hover: hover) {
+    #qr--bar > .qr--buttons .cbgm-qr.qr--button:hover,
+    #qr--popout > .qr--body > .qr--buttons .cbgm-qr.qr--button:hover {
+        background-color: color-mix(in srgb, var(--SmartThemeBodyColor, #333) 10%, transparent);
+    }
+}
+
 .cbgm-qr.cbgm-playing {
     color: var(--SmartThemeQuoteColor, #7cc);
 }
@@ -348,6 +362,34 @@
 .cbgm-row-side {
     flex: none;
     white-space: nowrap;
+}
+
+/* 직접 넣기 탭: 주소 칸과 재생 단추 */
+.cbgm-direct {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 8px 0 12px;
+}
+
+.cbgm-direct .cbgm-direct-url {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 13px;
+}
+
+/* 재생 기록의 곡을 메시지에 카드로 붙이는 단추 */
+.cbgm-row-go {
+    flex: none;
+    margin: -4px -6px -4px -2px;
+    padding: 4px 6px;
+    font-size: 12px;
+    opacity: 0.45;
+}
+
+.cbgm-row-go:hover {
+    opacity: 1;
 }
 
 /* ── 메시지 본문 맨 위 곡 카드 ── */

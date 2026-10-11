@@ -439,6 +439,7 @@ function onPlayerState(event) {
         st.errStreak = 0;
         st.needTap = false;
         clearTimeout(st.hintTimer);
+        nameDirectTrack();
     }
     if (event.data === 0) onTrackEnded();
     render();
@@ -447,6 +448,11 @@ function onPlayerState(event) {
 // 2·5: 잘못된 영상, 100: 삭제·비공개, 101·150: 다른 사이트 재생 금지
 function onPlayerError(event) {
     console.warn(LOG, 'player error', event?.data, st.current?.video?.id);
+    if (st.current?.direct) {
+        st.current = null;
+        setStatus('이 영상은 틀 수 없습니다. 주소가 맞는지, 다른 사이트에서의 재생이 막힌 영상은 아닌지 확인해 주세요.', true);
+        return;
+    }
     if (st.current) cachePut(cacheKey(st.current), { id: null });
     st.current = null;
     if (++st.errStreak > 4) {
@@ -472,15 +478,17 @@ async function startVideo(track, video) {
     const s = S();
     st.current = { ...track, video };
     const name = nk(trackName(track));
+    // 주소로 직접 넣은 곡은 이름을 나중에 알게 되므로 영상으로 같은 곡인지 가린다.
+    const same = (p) => (track.direct ? p.direct && p.vid === video.id : !p.direct && nk(trackName(p)) === name);
     // 별표 단 곡은 자리를 옮기지 않는다. 옮기면 ★ 곡들 반복의 순서가 재생할 때마다 뒤섞인다.
-    const starred = s.played.find((p) => p.star && nk(trackName(p)) === name);
+    const starred = s.played.find((p) => p.star && same(p));
     if (starred) {
         starred.t = Date.now();
         starred.kind = video.kind;
         starred.vid = video.id;
     } else {
-        s.played = s.played.filter((p) => nk(trackName(p)) !== name)
-            .concat({ artist: track.artist, title: track.title, genre: track.genre, reason: track.reason || '', kind: video.kind, vid: video.id, t: Date.now(), star: false });
+        s.played = s.played.filter((p) => !same(p))
+            .concat({ ...trackFields(track), kind: video.kind, vid: video.id, t: Date.now(), star: false });
     }
     // 한도를 넘으면 별표가 없는 오래된 곡부터 뺀다.
     for (let i = 0; s.played.length > PLAYED_MAX && i < s.played.length;) {
@@ -515,13 +523,13 @@ async function playNextStar() {
         const t = list[(at + i) % list.length];
         let video;
         try {
-            video = await findVideo(t);
+            video = await resolveVideo(t);
         } catch (e) {
             setStatus(e.message, true);
             return true;
         }
         if (!video) continue;
-        await startVideo({ artist: t.artist, title: t.title, genre: t.genre, reason: t.reason || '' }, video);
+        await startVideo(trackFields(t), video);
         return true;
     }
     return false;
@@ -599,12 +607,70 @@ function openSearch(track) {
     window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.artist} ${track.title} official audio`)}`, '_blank', 'noopener');
 }
 
+// ── 주소로 직접 넣기 ─────────────────────────────────────────────────────
+//
+// YouTube 주소를 넣으면 검색 없이 그 영상을 그대로 튼다. 곡 이름은 재생이 시작된 뒤 플레이어에서 읽는다.
+// 이렇게 넣은 곡은 direct·vid를 달고 다니며, 다시 틀 때도 검색하지 않고 같은 영상을 튼다.
+
+const trackFields = (t) => ({
+    artist: t.artist,
+    title: t.title,
+    genre: t.genre,
+    reason: t.reason || '',
+    ...(t.direct && t.vid ? { direct: true, vid: t.vid } : {}),
+});
+
+async function resolveVideo(track) {
+    if (track.direct && track.vid) return { id: track.vid, title: track.title, channel: track.artist, kind: '' };
+    return findVideo(track);
+}
+
+function parseVideoId(text) {
+    const value = String(text ?? '').trim();
+    if (/^[\w-]{11}$/.test(value)) return value;
+    return value.match(/(?:youtu\.be\/|[?&]v=|\/(?:shorts|embed|live)\/)([\w-]{11})/)?.[1] || '';
+}
+
+async function playDirect(text) {
+    const id = parseVideoId(text);
+    if (!id) {
+        setStatus('YouTube 영상 주소를 알아보지 못했습니다.', true);
+        return false;
+    }
+    const known = S().played.find((p) => p.direct && p.vid === id);
+    const track = known ? trackFields(known) : { artist: 'YouTube', title: '불러오는 중…', genre: '직접 넣기', reason: '', direct: true, vid: id };
+    await startVideo(track, { id, title: '', channel: '', kind: '' });
+    return true;
+}
+
+// 재생이 시작되면 플레이어가 알려 주는 제목·채널로 이름을 채운다.
+function nameDirectTrack() {
+    const cur = st.current;
+    if (!cur?.direct || cur.named) return;
+    const data = st.player?.getVideoData?.() || {};
+    if (!data.title) return;
+    cur.named = true;
+    const entry = S().played.find((p) => p.direct && p.vid === cur.vid);
+    if (entry && entry.title !== '불러오는 중…') {
+        cur.title = entry.title;
+        cur.artist = entry.artist;
+        return;
+    }
+    cur.title = String(data.title);
+    cur.artist = String(data.author || '').replace(/\s-\sTopic$/i, '') || 'YouTube';
+    if (entry) {
+        entry.title = cur.title;
+        entry.artist = cur.artist;
+        save();
+    }
+}
+
 // 카드·기록·추천 목록에서 고른 곡 하나를 바로 튼다.
 async function playTrack(track) {
-    if (!S().apiKey) return openSearch(track);
+    if (!track.direct && !S().apiKey) return openSearch(track);
     let video;
     try {
-        video = await findVideo(track);
+        video = await resolveVideo(track);
     } catch (e) {
         setStatus(e.message, true);
         return;
@@ -698,16 +764,36 @@ function readTag(text) {
 // 메시지 단추로 고른 곡은 본문을 건드리지 않고 메시지의 extra에 적어 둔다. 채팅 파일에 함께 저장된다.
 function savedCard(message) {
     const c = message?.extra?.chat_bgm;
-    return c?.artist && c?.title ? { artist: String(c.artist), title: String(c.title), genre: String(c.genre || ''), reason: '' } : null;
+    if (!c?.artist || !c?.title) return null;
+    return trackFields({ artist: String(c.artist), title: String(c.title), genre: String(c.genre || ''), direct: !!c.direct, vid: c.vid });
 }
 
 function attachCard(messageId, track) {
     const message = ctx().chat?.[messageId];
     if (!message || !track) return;
     message.extra = message.extra || {};
-    message.extra.chat_bgm = { artist: track.artist, title: track.title, genre: track.genre || '' };
+    const { reason, ...card } = trackFields(track);
+    message.extra.chat_bgm = card;
     ctx().saveChat?.();
     scheduleCards();
+}
+
+// 재생 기록의 곡을 고른 메시지에 카드로 붙인다. 그 메시지에 카드가 이미 있으면 이 곡으로 바뀐다.
+async function attachToMessage(track) {
+    const c = ctx();
+    const last = (c.chat?.length || 0) - 1;
+    if (last < 0) return toast('info', '열려 있는 채팅이 없습니다.');
+    const question = `"${track.title}" 카드를 붙일 메시지 번호를 적어 주세요 (0 ~ ${last}).\n그 메시지에 카드가 이미 있으면 이 곡으로 바뀝니다.`;
+    let answer;
+    // 팝업 내용은 HTML로 그려지므로 곡 이름을 그대로 넣지 않는다.
+    if (c.callGenericPopup && c.POPUP_TYPE) answer = await c.callGenericPopup(esc(question).replace(/\n/g, '<br>'), c.POPUP_TYPE.INPUT, String(last));
+    else answer = window.prompt(question, String(last));
+    if (answer === null || answer === undefined || answer === false || String(answer).trim() === '') return;
+    const text = String(answer).trim().replace(/^#/, '');
+    const id = Number(text);
+    if (!/^\d+$/.test(text) || id > last) return toast('warning', `메시지 번호는 0부터 ${last}까지의 숫자로 적어 주세요.`);
+    attachCard(id, track);
+    toast('success', `#${id} 메시지에 "${track.title}" 카드를 붙였습니다.`);
 }
 
 // 직접 붙인 카드는 extra에서 지우고, 모델이 답장에 적은 카드는 본문에서 <bgm> 태그를 지운다.
@@ -733,7 +819,7 @@ const thumbState = new Map();
 
 function thumbFor(track) {
     const name = nk(trackName(track));
-    const vid = S().played.find((p) => p.vid && nk(trackName(p)) === name)?.vid || S().cache[cacheKey(track)]?.id;
+    const vid = (track.direct && track.vid) || S().played.find((p) => p.vid && nk(trackName(p)) === name)?.vid || S().cache[cacheKey(track)]?.id;
     if (!vid || !/^[\w-]{6,20}$/.test(vid)) return '';
     const url = `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`;
     const state = thumbState.get(vid);
@@ -804,6 +890,7 @@ function renderCards() {
             card.dataset.title = track.title;
             card.dataset.genre = track.genre;
             card.dataset.mesid = String(id);
+            if (track.direct) card.dataset.vid = track.vid;
             // 본문 안의 <i>·<b>는 테마가 기울임과 색을 입히므로 span만 쓴다.
             card.title = '눌러서 재생·일시정지';
             // 모양(알약·미니 플레이어·한 줄·LP판·진행 막대)은 같은 뼈대를 두고 CSS로만 바꾼다.
@@ -1004,6 +1091,7 @@ function buildPanel() {
         </div>
         <div class="cbgm-tabs">
             <div class="cbgm-tab" data-act="tab" data-tab="queue">추천곡</div>
+            <div class="cbgm-tab" data-act="tab" data-tab="direct">직접 넣기</div>
             <div class="cbgm-tab" data-act="tab" data-tab="history">재생 기록</div>
         </div>
         <div class="cbgm-list"></div>`;
@@ -1012,6 +1100,9 @@ function buildPanel() {
     panel.addEventListener('click', (e) => {
         const target = e.target.closest('[data-act]');
         if (target) onPanelAction(target.dataset.act, target);
+    });
+    panel.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.classList?.contains('cbgm-direct-url')) onPanelAction('direct');
     });
     const volume = panel.querySelector('.cbgm-vol');
     volume.value = String(S().volume);
@@ -1064,7 +1155,17 @@ async function onPanelAction(act, target) {
     if (act === 'pick' || act === 'replay') {
         const list = act === 'pick' ? st.queue : historyList();
         const track = list[Number(target.dataset.index)];
-        if (track) await playTrack({ artist: track.artist, title: track.title, genre: track.genre, reason: track.reason || '' });
+        if (track) await playTrack(trackFields(track));
+        return;
+    }
+    if (act === 'direct') {
+        const input = $id('cbgm_panel').querySelector('.cbgm-direct-url');
+        if (input.value.trim() && await playDirect(input.value)) input.value = '';
+        return;
+    }
+    if (act === 'attach') {
+        const track = historyList()[Number(target.dataset.index)];
+        if (track) await attachToMessage(track);
         return;
     }
     if (act === 'star') {
@@ -1162,6 +1263,7 @@ function listRow(track, index, act, side) {
             ${star}
             <span class="cbgm-row-name"><b>${esc(track.title)}</b> <span>${esc(track.artist)}</span></span>
             <span class="cbgm-row-side">${esc(side)}</span>
+            ${act === 'replay' ? `<span class="cbgm-row-go" data-act="attach" data-index="${index}" title="이 곡을 메시지에 카드로 붙이기"><i class="fa-solid fa-arrow-right"></i></span>` : ''}
         </div>`;
 }
 
@@ -1188,7 +1290,7 @@ function render() {
             <div class="cbgm-artist">${esc(t.artist)}</div>
             <div class="cbgm-tags">
                 <span class="cbgm-tag">${esc(t.genre)}</span>
-                <span class="cbgm-tag ${t.video.kind ? 'cbgm-tag-ok' : ''}" title="${esc(t.video.channel)}">${badge}</span>
+                ${t.direct ? '' : `<span class="cbgm-tag ${t.video.kind ? 'cbgm-tag-ok' : ''}" title="${esc(t.video.channel)}">${badge}</span>`}
             </div>
             ${t.reason ? `<div class="cbgm-reason">${esc(t.reason)}</div>` : ''}`;
     } else {
@@ -1203,7 +1305,17 @@ function render() {
 
     panel.querySelectorAll('.cbgm-tab').forEach((tab) => tab.classList.toggle('cbgm-tab-on', tab.dataset.tab === st.tab));
     const list = panel.querySelector('.cbgm-list');
-    if (st.tab === 'history') {
+    if (st.tab === 'direct') {
+        // 적던 주소가 지워지지 않게, 이미 그려져 있으면 다시 그리지 않는다.
+        if (!list.querySelector('.cbgm-direct')) {
+            list.innerHTML = `
+                <div class="cbgm-direct">
+                    <input type="text" class="text_pole cbgm-direct-url" placeholder="YouTube 주소 붙여넣기">
+                    <div class="cbgm-icon" data-act="direct" title="이 영상 틀기"><i class="fa-solid fa-play"></i></div>
+                </div>
+                <div class="cbgm-list-empty">주소의 영상을 그대로 틉니다. 검색 할당량을 쓰지 않고, 튼 곡은 재생 기록에 남습니다.</div>`;
+        }
+    } else if (st.tab === 'history') {
         const played = historyList();
         list.innerHTML = played.length
             ? `${played.map((t, i) => listRow(t, i, 'replay', formatTime(t.t))).join('')}
@@ -1250,7 +1362,7 @@ function addMessageButton() {
     jQuery(document).on('click', '.cbgm-card', function (e) {
         if (!S().enabled) return;
         if (e.target.closest?.('.cbgm-card-x')) return S().cardRemove ? detachCard(Number(this.dataset.mesid)) : undefined;
-        const track = { artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, reason: '' };
+        const track = trackFields({ artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, direct: !!this.dataset.vid, vid: this.dataset.vid });
         // 이미 걸려 있는 곡이면 재생·일시정지만 바꾼다.
         if (st.current && nk(trackName(st.current)) === nk(trackName(track))) onIconTap();
         else playTrack(track);
