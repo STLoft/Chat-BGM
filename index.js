@@ -69,6 +69,9 @@ const REPEAT_LABELS = { off: '반복 끔 (곡이 끝나면 다음 추천곡)', o
 // 생각(추론)하는 모델은 생각에 쓴 토큰도 이 한도에 들어가므로 넉넉하게 둔다.
 const RESPONSE_TOKENS = 4000;
 
+// 아이패드는 맥으로 자기를 소개하므로 터치 여부로 가린다.
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 const st = {
     queue: [],
     current: null,
@@ -84,6 +87,7 @@ const st = {
     errStreak: 0,
     hintTimer: 0,
     needTap: false,
+    tapVideo: false,
     panelOpen: false,
     tab: 'queue',
     icon: null,
@@ -439,6 +443,7 @@ function onPlayerState(event) {
     if (event.data === 1) {
         st.errStreak = 0;
         st.needTap = false;
+        st.tapVideo = false;
         clearTimeout(st.hintTimer);
         nameDirectTrack();
     }
@@ -505,10 +510,13 @@ async function startVideo(track, video) {
     // 브라우저가 소리 나는 자동 재생을 막으면 재생이 시작되지 않는다. 그때는 눌러 달라고 알린다.
     clearTimeout(st.hintTimer);
     st.needTap = false;
+    st.tapVideo = false;
     st.hintTimer = setTimeout(() => {
         if (st.current?.video?.id !== video.id || isPlaying()) return;
         st.needTap = true;
-        if (!st.panelOpen) toast('info', '브라우저가 자동 재생을 막았습니다. 음표를 한 번 눌러 주세요.');
+        // 아이폰·아이패드는 바깥 단추로는 재생을 시작할 수 없으므로 바로 영상을 보여 준다.
+        if (IS_IOS) askTapVideo();
+        else if (!st.panelOpen) toast('info', '브라우저가 자동 재생을 막았습니다. 음표를 한 번 눌러 주세요.');
         render();
     }, 4000);
     setStatus('');
@@ -689,6 +697,7 @@ function stopAll() {
     try { st.player?.stopVideo?.(); } catch { /* 플레이어가 아직 준비되지 않음 */ }
     st.current = null;
     st.needTap = false;
+    st.tapVideo = false;
     st.playerState = -1;
     if (!st.busy) st.status = '';
     render();
@@ -1038,8 +1047,19 @@ function onIconTap() {
         else recommend({ manual: true });
         return;
     }
-    if (isPlaying()) st.player?.pauseVideo();
-    else st.player?.playVideo();
+    if (isPlaying()) {
+        st.player?.pauseVideo();
+        return;
+    }
+    st.player?.playVideo();
+    // 눌러도 시작되지 않으면 영상 화면을 직접 눌러야 하는 기기다.
+    if (st.needTap) setTimeout(() => { if (st.current && !isPlaying()) askTapVideo(); }, 1500);
+}
+
+// 플레이어를 열어 영상 화면을 직접 누르게 한다. 한 번 누른 뒤에는 다음 곡부터 이어서 나오는 경우가 많다.
+function askTapVideo() {
+    st.tapVideo = true;
+    openPanel();
 }
 
 function syncIcon() {
@@ -1323,7 +1343,8 @@ function render() {
     }
 
     const status = panel.querySelector('.cbgm-status');
-    const text = st.status || (st.needTap ? '브라우저가 자동 재생을 막았습니다. ▶ 를 눌러 주세요.' : '');
+    const blocked = st.tapVideo ? '이 기기에서는 영상 화면을 직접 눌러야 재생이 시작됩니다. 위 영상을 한 번 눌러 주세요.' : '브라우저가 자동 재생을 막았습니다. ▶ 를 눌러 주세요.';
+    const text = st.status || (st.needTap ? blocked : '');
     status.textContent = text;
     status.classList.toggle('cbgm-error', !!text && (st.statusError || !st.status));
     status.hidden = !text;
