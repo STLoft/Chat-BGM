@@ -56,6 +56,8 @@ const DEFAULTS = Object.freeze({
     cardOnPick: true,
     cardStyle: 'pill',
     cardEvery: 6,
+    iconOrder: 0,
+    iconRow: 'last',
 });
 
 const DEFAULT_GENRES = ['ballad', 'kindie', 'pop', 'ost'];
@@ -1089,7 +1091,7 @@ function findIconHost() {
     const scope = document.querySelector('#qr--bar') || document.querySelector('#qr--popout > .qr--body');
     if (!scope) return { host: $id('leftSendForm'), qr: false };
     const holders = scope.querySelectorAll(':scope > .qr--buttons');
-    if (holders.length) return { host: holders[holders.length - 1], qr: true };
+    if (holders.length) return { host: holders[S().iconRow === 'first' ? 0 : holders.length - 1], qr: true };
     const holder = document.createElement('div');
     holder.className = 'qr--buttons cbgm-qr-holder';
     scope.append(holder);
@@ -1171,7 +1173,11 @@ function syncIcon() {
     const { host, qr } = findIconHost();
     if (!host) return;
     if (!icon) icon = st.icon || (st.icon = buildIcon());
-    if (icon.parentElement !== host) host.append(icon);
+    // iconOrder: 0이면 맨 뒤, 1이면 맨 앞, N이면 앞에서 N번째. 같은 줄의 다른 단추들 사이에 끼워 넣는다.
+    const others = [...host.children].filter((el) => el !== icon);
+    const order = clamp(S().iconOrder, 0, 99);
+    const before = order > 0 ? others[order - 1] || null : null;
+    if (icon.parentElement !== host || icon.nextElementSibling !== before) host.insertBefore(icon, before);
     icon.classList.toggle('qr--button', qr);
     renderIcon();
 }
@@ -1180,7 +1186,8 @@ function watchIconHost() {
     const queue = () => {
         if (st.iconQueued) return;
         st.iconQueued = true;
-        requestAnimationFrame(syncIcon);
+        // 화면이 가려져 있어도 바로 다시 붙도록 requestAnimationFrame 대신 짧은 타이머를 쓴다.
+        setTimeout(syncIcon, 50);
     };
     const observer = new MutationObserver(queue);
     const form = $id('send_form');
@@ -1583,6 +1590,13 @@ function addSettingsDrawer() {
                     <div class="menu_button menu_button_icon" id="cbgm_open_btn"><i class="fa-solid fa-music"></i><span>플레이어 열기</span></div>
                     <div class="menu_button menu_button_icon" id="cbgm_now_btn"><i class="fa-solid fa-wand-magic-sparkles"></i><span>지금 추천받기</span></div>
                 </div>
+
+                <h4>아이콘 위치</h4>
+                <div class="cbgm-row cbgm-nums">
+                    <label>빠른 답장 줄에서의 순서 <input type="number" class="text_pole cbgm-num" data-key="iconOrder" min="0" max="99"></label>
+                    <label>줄이 여럿일 때 <select class="text_pole cbgm-select" data-key="iconRow"><option value="last">마지막 줄</option><option value="first">첫 줄</option></select></label>
+                </div>
+                <small>순서는 0이면 맨 뒤, 1이면 맨 앞, 2면 앞에서 두 번째입니다.</small>
 
                 <h4>장르</h4>
                 <small>체크한 장르 안에서만 추천합니다.</small>

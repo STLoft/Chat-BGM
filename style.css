@@ -800,6 +800,11 @@
     text-align: center;
 }
 
+.cbgm-settings .cbgm-select {
+    width: auto;
+    margin: 0 4px;
+}
+
 .cbgm-nums label {
     display: flex;
     align-items: center;
