@@ -57,7 +57,7 @@ const DEFAULTS = Object.freeze({
     cardStyle: 'pill',
     cardEvery: 6,
     iconOrder: 0,
-    iconRow: 'last',
+    iconSet: 0,
 });
 
 const DEFAULT_GENRES = ['ballad', 'kindie', 'pop', 'ost'];
@@ -119,6 +119,9 @@ function S() {
     delete s.autoNext;
     if (!REPEAT_MODES.includes(s.repeat)) s.repeat = 'off';
     if (!CARD_STYLES[s.cardStyle]) s.cardStyle = 'pill';
+    // 예전 판의 "첫 줄·마지막 줄" 선택을 세트 번호로 옮긴다.
+    if (s.iconRow === 'first' && !s.iconSet) s.iconSet = 1;
+    delete s.iconRow;
     if (!s.cache || typeof s.cache !== 'object') s.cache = {};
     if (s.pos && (typeof s.pos.x !== 'number' || typeof s.pos.y !== 'number')) s.pos = null;
     return s;
@@ -1090,8 +1093,12 @@ function scheduleCards() {
 function findIconHost() {
     const scope = document.querySelector('#qr--bar') || document.querySelector('#qr--popout > .qr--body');
     if (!scope) return { host: $id('leftSendForm'), qr: false };
-    const holders = scope.querySelectorAll(':scope > .qr--buttons');
-    if (holders.length) return { host: holders[S().iconRow === 'first' ? 0 : holders.length - 1], qr: true };
+    // 세트마다 .qr--buttons 칸이 하나씩 있다. 세트를 한 줄로 묶는 설정이면 바깥 칸 안에 세트 칸들이 들어 있으므로,
+    // 안에 다른 칸이 없는 맨 안쪽 칸(단추들이 실제로 놓이는 곳)만 고른다.
+    const holders = [...scope.querySelectorAll('.qr--buttons')].filter((el) => !el.querySelector('.qr--buttons'));
+    // iconSet: 0이면 마지막 세트, N이면 앞에서 N번째 세트
+    const pick = clamp(S().iconSet, 0, 99);
+    if (holders.length) return { host: holders[pick > 0 ? Math.min(pick, holders.length) - 1 : holders.length - 1], qr: true };
     const holder = document.createElement('div');
     holder.className = 'qr--buttons cbgm-qr-holder';
     scope.append(holder);
@@ -1173,7 +1180,7 @@ function syncIcon() {
     const { host, qr } = findIconHost();
     if (!host) return;
     if (!icon) icon = st.icon || (st.icon = buildIcon());
-    // iconOrder: 0이면 맨 뒤, 1이면 맨 앞, N이면 앞에서 N번째. 같은 줄의 다른 단추들 사이에 끼워 넣는다.
+    // iconOrder: 0이면 맨 뒤, 1이면 맨 앞, N이면 앞에서 N번째. 그 세트의 단추들 사이에 끼워 넣는다.
     const others = [...host.children].filter((el) => el !== icon);
     const order = clamp(S().iconOrder, 0, 99);
     const before = order > 0 ? others[order - 1] || null : null;
@@ -1593,10 +1600,11 @@ function addSettingsDrawer() {
 
                 <h4>아이콘 위치</h4>
                 <div class="cbgm-row cbgm-nums">
-                    <label>빠른 답장 줄에서의 순서 <input type="number" class="text_pole cbgm-num" data-key="iconOrder" min="0" max="99"></label>
-                    <label>줄이 여럿일 때 <select class="text_pole cbgm-select" data-key="iconRow"><option value="last">마지막 줄</option><option value="first">첫 줄</option></select></label>
+                    <label>빠른 답장 세트 <input type="number" class="text_pole cbgm-num" data-key="iconSet" min="0" max="99"></label>
+                    <label>세트 안에서의 순서 <input type="number" class="text_pole cbgm-num" data-key="iconOrder" min="0" max="99"></label>
                 </div>
-                <small>순서는 0이면 맨 뒤, 1이면 맨 앞, 2면 앞에서 두 번째입니다.</small>
+                <small>세트는 0이면 마지막 세트, 1이면 첫 세트, 2면 두 번째 세트입니다.
+                순서는 0이면 그 세트의 맨 뒤, 1이면 맨 앞, 2면 앞에서 두 번째입니다.</small>
 
                 <h4>장르</h4>
                 <small>체크한 장르 안에서만 추천합니다.</small>
