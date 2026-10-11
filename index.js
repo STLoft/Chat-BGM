@@ -474,11 +474,26 @@ function loadYouTubeApi() {
 async function ensurePlayer() {
     if (st.playerReady) return st.playerReady;
     const YT = await loadYouTubeApi();
+    // SillyTavern은 페이지 전체에 "Referrer-Policy: no-referrer"를 보낸다. 그대로 두면 YouTube가 어느 사이트에
+    // 넣은 플레이어인지 알 수 없어 일부 영상을 "오류 153"으로 거절한다(특히 Safari).
+    // 그래서 틀(iframe)을 직접 만들어, 주소를 넣기 전에 이 틀만 출처를 보내도록 정해 둔다.
+    const host = $id('cbgm_panel').querySelector('.cbgm-video');
+    const frame = document.createElement('iframe');
+    frame.id = 'cbgm_player';
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+    frame.setAttribute('allowfullscreen', '');
+    frame.src = `https://www.youtube.com/embed/?${new URLSearchParams({
+        enablejsapi: '1',
+        playsinline: '1',
+        rel: '0',
+        controls: '1',
+        origin: location.origin,
+        widget_referrer: location.origin,
+    })}`;
+    host.replaceChildren(frame);
     st.playerReady = new Promise((resolve) => {
-        st.player = new YT.Player('cbgm_player', {
-            width: '100%',
-            height: '100%',
-            playerVars: { playsinline: 1, rel: 0, controls: 1, origin: location.origin },
+        st.player = new YT.Player(frame, {
             events: {
                 onReady: () => resolve(st.player),
                 onStateChange: onPlayerState,
@@ -487,6 +502,14 @@ async function ensurePlayer() {
         });
     });
     return st.playerReady;
+}
+
+// 플레이어를 버린다. 다음에 틀 때 새로 만들어진다.
+function resetPlayer() {
+    try { st.player?.destroy?.(); } catch { /* 이미 사라진 플레이어 */ }
+    st.player = null;
+    st.playerReady = null;
+    st.playerState = -1;
 }
 
 const isPlaying = () => st.playerState === 1 || st.playerState === 3;
@@ -514,6 +537,15 @@ function onPlayerError(event) {
         return;
     }
     const code = Number(event?.data) || 0;
+    // 153: YouTube가 이 플레이어가 놓인 사이트를 확인하지 못함. 영상 탓이 아니므로 플레이어를 새로 만들어 한 번만 다시 튼다.
+    if (code === 153 && st.current && !st.current.rebuilt) {
+        const again = { ...st.current, rebuilt: true };
+        const video = again.video;
+        st.current = null;
+        resetPlayer();
+        startVideo(again, video);
+        return;
+    }
     const failed = st.current;
     st.current = null;
     // 100: 지워졌거나 비공개, 101·150: 이 기기·사이트에서의 재생을 권리자가 막음. 이런 영상만 이 기기에서 막힌 것으로 적는다.
@@ -759,6 +791,8 @@ function nameDirectTrack() {
 async function playTrack(track) {
     if (!track.vid && !S().apiKey) return openSearch(track);
     st.failed = null;
+    // 직접 고른 곡은 앞서 이어진 오류 횟수와 상관없이 새로 시도한다.
+    st.errStreak = 0;
     let video;
     try {
         video = await resolveVideo(track, true);
