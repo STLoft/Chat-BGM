@@ -829,26 +829,29 @@ async function attachToMessage(track) {
     toast('success', `#${id} 메시지에 "${track.title}" 카드를 붙였습니다.`);
 }
 
-// 카드를 꾹 누르거나 우클릭하면 뗄지 묻는다. 메시지를 꾹 눌러 메뉴를 띄우는 확장이 함께 반응하지 않게 여기서 막는다.
+// 카드를 꾹 누르거나 우클릭하면 작은 메뉴(YouTube에서 열기·곡카드 삭제)를 띄운다. 메시지를 꾹 눌러 메뉴를 띄우는 확장이 함께 반응하지 않게 여기서 막는다.
 function bindCardHold(card) {
     let timer = 0;
     let start = null;
     let lastAsk = 0;
     const cancel = () => { clearTimeout(timer); timer = 0; };
-    const ask = () => {
+    const ask = (byMouse = false) => {
         cancel();
         // 휴대폰에서는 꾹 누르면 contextmenu도 함께 오므로 한 번만 받는다.
         if (Date.now() - lastAsk < 1000) return;
         lastAsk = Date.now();
-        card.dataset.held = '1';
-        setTimeout(() => delete card.dataset.held, 1500);
-        confirmDetach(Number(card.dataset.mesid), card.dataset.title);
+        // 손가락을 떼면 click이 따라오므로 그 한 번은 재생으로 치지 않는다. 마우스 우클릭에는 따라오는 click이 없다.
+        if (!byMouse) {
+            card.dataset.held = '1';
+            setTimeout(() => delete card.dataset.held, 1500);
+        }
+        openCardMenu(card);
     };
     card.addEventListener('pointerdown', (e) => {
         if (e.button) return;
         start = { x: e.clientX, y: e.clientY };
         cancel();
-        timer = setTimeout(ask, 550);
+        timer = setTimeout(() => ask(), 550);
     });
     card.addEventListener('pointermove', (e) => {
         if (timer && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
@@ -857,20 +860,74 @@ function bindCardHold(card) {
     card.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        ask();
+        ask(e.pointerType === 'mouse');
     });
 }
 
-async function confirmDetach(messageId, title) {
-    const c = ctx();
-    const message = c.chat?.[messageId];
-    if (!message) return;
-    const fromReply = !message.extra?.chat_bgm;
-    const question = `"${title}" 카드를 삭제할까요?${fromReply ? '\n답장에 적힌 <bgm …> 줄이 지워지며 되돌릴 수 없습니다.' : ''}`;
-    let yes;
-    if (c.callGenericPopup && c.POPUP_TYPE) yes = (await c.callGenericPopup(esc(question).replace(/\n/g, '<br>'), c.POPUP_TYPE.CONFIRM)) === (c.POPUP_RESULT?.AFFIRMATIVE ?? 1);
-    else yes = window.confirm(question);
-    if (yes) detachCard(messageId);
+// 이미 찾아 둔 영상이 있으면 그 번호. 없으면 빈 글자(새로 검색하지는 않는다).
+function knownVideoId(track) {
+    const name = nk(trackName(track));
+    const vid = (track.direct && track.vid) || S().played.find((p) => p.vid && nk(trackName(p)) === name)?.vid || S().cache[cacheKey(track)]?.id;
+    return vid && /^[\w-]{6,20}$/.test(vid) ? vid : '';
+}
+
+// 여러 곡을 YouTube의 임시 재생목록으로 여는 링크 줄. 영상을 아는 곡만 넣고, 하나도 없으면 줄을 그리지 않는다.
+function youtubeFoot(tracks, label) {
+    const ids = [...new Set(tracks.map(knownVideoId).filter(Boolean))].slice(0, 50);
+    if (!ids.length) return '';
+    const url = ids.length === 1 ? `https://www.youtube.com/watch?v=${ids[0]}` : `https://www.youtube.com/watch_videos?video_ids=${ids.join(',')}`;
+    return `<a class="cbgm-list-foot" data-act="youtube" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`;
+}
+
+function closeCardMenu() {
+    $id('cbgm_card_menu')?.remove();
+    document.removeEventListener('pointerdown', onMenuOutside, true);
+    window.removeEventListener('scroll', closeCardMenu, true);
+}
+
+function onMenuOutside(e) {
+    if (!e.target.closest?.('#cbgm_card_menu')) closeCardMenu();
+}
+
+// 카드를 꾹 눌렀을 때 뜨는 작은 메뉴. YouTube 줄은 진짜 링크라서 휴대폰에서는 YouTube 앱으로 넘어간다.
+function openCardMenu(card) {
+    closeCardMenu();
+    const track = trackFields({ artist: card.dataset.artist, title: card.dataset.title, genre: card.dataset.genre, direct: !!card.dataset.vid, vid: card.dataset.vid });
+    const vid = knownVideoId(track);
+    const url = vid
+        ? `https://www.youtube.com/watch?v=${vid}`
+        : `https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.artist} ${track.title}`)}`;
+    const menu = document.createElement('div');
+    menu.id = 'cbgm_card_menu';
+    menu.className = 'cbgm-card-menu';
+    menu.innerHTML = `
+        <a class="cbgm-card-menu-item" href="${esc(url)}" target="_blank" rel="noopener"><i class="fa-brands fa-youtube"></i><span>YouTube에서 열기</span></a>
+        <div class="cbgm-card-menu-item" data-act="delete"><i class="fa-solid fa-trash-can"></i><span>곡카드 삭제</span></div>`;
+    document.body.appendChild(menu);
+
+    // 카드 바로 아래 가운데에 두고, 자리가 없으면 위로 올린다. 모바일 실리태번 때문에 left/top을 픽셀로 준다.
+    const rect = card.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const below = rect.bottom + 6;
+    menu.style.left = `${clamp(rect.left + rect.width / 2 - w / 2, 4, Math.max(4, window.innerWidth - w - 4))}px`;
+    menu.style.top = `${below + h > window.innerHeight - 4 ? Math.max(4, rect.top - h - 6) : below}px`;
+
+    menu.querySelector('a').addEventListener('click', () => {
+        // 같은 곡이 여기서도 나오고 있으면 소리가 겹치지 않게 멈춘다.
+        if (st.current && isPlaying() && nk(trackName(st.current)) === nk(trackName(track))) st.player?.pauseVideo();
+        closeCardMenu();
+    });
+    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
+        closeCardMenu();
+        detachCard(Number(card.dataset.mesid));
+    });
+    // 메뉴를 띄운 손가락이 떨어지는 것까지 바깥 누르기로 치지 않게 한 박자 늦게 건다.
+    setTimeout(() => {
+        if (!$id('cbgm_card_menu')) return;
+        document.addEventListener('pointerdown', onMenuOutside, true);
+        window.addEventListener('scroll', closeCardMenu, true);
+    }, 0);
 }
 
 // 직접 붙인 카드는 extra에서 지우고, 모델이 답장에 적은 카드는 본문에서 <bgm> 태그를 지운다.
@@ -895,9 +952,8 @@ function detachCard(messageId) {
 const thumbState = new Map();
 
 function thumbFor(track) {
-    const name = nk(trackName(track));
-    const vid = (track.direct && track.vid) || S().played.find((p) => p.vid && nk(trackName(p)) === name)?.vid || S().cache[cacheKey(track)]?.id;
-    if (!vid || !/^[\w-]{6,20}$/.test(vid)) return '';
+    const vid = knownVideoId(track);
+    if (!vid) return '';
     const url = `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`;
     const state = thumbState.get(vid);
     if (state === 'ok') return url;
@@ -969,7 +1025,7 @@ function renderCards() {
             card.dataset.mesid = String(id);
             if (track.direct) card.dataset.vid = track.vid;
             // 본문 안의 <i>·<b>는 테마가 기울임과 색을 입히므로 span만 쓴다.
-            card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 카드 삭제';
+            card.title = '누르면 재생·일시정지, 꾹 누르면(PC는 우클릭) 메뉴';
             bindCardHold(card);
             // 모양(알약·미니 플레이어·한 줄·LP판·진행 막대)은 같은 뼈대를 두고 CSS로만 바꾼다.
             card.innerHTML = `
@@ -1264,6 +1320,28 @@ async function onPanelAction(act, target) {
         render();
         return;
     }
+    if (act === 'youtube') {
+        // 링크는 그대로 열리게 두고, 소리가 겹치지 않게 여기 재생만 멈춘다.
+        if (isPlaying()) st.player?.pauseVideo();
+        return;
+    }
+    if (act === 'findQueue') {
+        if (st.busy) return;
+        st.busy = true;
+        setStatus('추천곡을 YouTube에서 찾는 중…');
+        try {
+            for (const track of [...st.queue]) {
+                if (!knownVideoId(track) && !(await findVideo(track))) st.queue = st.queue.filter((q) => q !== track);
+            }
+            setStatus(st.queue.length ? '준비됐습니다. "추천곡 모두 YouTube에서 열기"를 한 번 더 눌러 주세요.' : '추천곡의 공식 음원을 찾지 못했습니다.', !st.queue.length);
+        } catch (e) {
+            setStatus(e.message, true);
+        } finally {
+            st.busy = false;
+            render();
+        }
+        return;
+    }
     if (act === 'clearHistory') {
         clearHistory();
         save();
@@ -1408,12 +1486,16 @@ function render() {
         const played = historyList();
         list.innerHTML = played.length
             ? `${played.map((t, i) => listRow(t, i, 'replay', formatTime(t.t))).join('')}
+               ${youtubeFoot(played.filter((t) => t.star), '★ 곡들 YouTube에서 열기')}
                <div class="cbgm-list-foot" data-act="clearHistory">재생 기록 지우기 (★제외)</div>`
             : '<div class="cbgm-list-empty">아직 재생한 곡이 없습니다.</div>';
     } else {
+        // 추천곡은 틀 차례가 돼야 영상을 찾으므로, 아직 못 찾은 곡이 있으면 먼저 찾게 한다.
+        const ready = st.queue.every((t) => knownVideoId(t));
         list.innerHTML = st.queue.length
             ? `${st.mood ? `<div class="cbgm-list-mood"><i class="fa-solid fa-feather"></i> ${esc(st.mood)}</div>` : ''}
-               ${st.queue.map((t, i) => listRow(t, i, 'pick', t.genre)).join('')}`
+               ${st.queue.map((t, i) => listRow(t, i, 'pick', t.genre)).join('')}
+               ${ready ? youtubeFoot(st.queue, '추천곡 모두 YouTube에서 열기') : (S().apiKey ? '<div class="cbgm-list-foot" data-act="findQueue">추천곡 모두 YouTube에서 열기</div>' : '')}`
             : '<div class="cbgm-list-empty">대기 중인 추천곡이 없습니다.</div>';
     }
     if (panel.offsetHeight !== before) placePanel();
@@ -1450,7 +1532,7 @@ function addMessageButton() {
     });
     jQuery(document).on('click', '.cbgm-card', function (e) {
         if (!S().enabled) return;
-        // 꾹 눌러 떼기 창을 띄운 뒤 손을 떼면 click이 따라오므로 그 한 번은 넘긴다.
+        // 꾹 눌러 메뉴를 띄운 뒤 손을 떼면 click이 따라오므로 그 한 번은 넘긴다.
         if (this.dataset.held) { delete this.dataset.held; return; }
         const track = trackFields({ artist: this.dataset.artist, title: this.dataset.title, genre: this.dataset.genre, direct: !!this.dataset.vid, vid: this.dataset.vid });
         // 이미 걸려 있는 곡이면 재생·일시정지만 바꾼다.
@@ -1549,7 +1631,7 @@ function addSettingsDrawer() {
                 </select>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardAutoPlay"><span>카드가 붙은 답장이 오면 그 곡을 자동으로 틀기 (끄면 카드를 눌렀을 때만)</span></label>
                 <label class="checkbox_label"><input type="checkbox" data-key="cardOnPick"><span>메시지의 <i class="fa-solid fa-music"></i> 단추로 추천받은 곡을 그 메시지에 카드로 남기기</span></label>
-                <small>카드를 꾹 누르면(PC는 우클릭) 그 카드를 삭제할 수 있습니다.</small>
+                <small>카드를 꾹 누르면(PC는 우클릭) <b>YouTube에서 열기</b>와 <b>곡카드 삭제</b>가 뜹니다.</small>
 
                 <div class="cbgm-row">
                     <div class="menu_button" id="cbgm_clear_btn">재생 기록·검색 기억 지우기</div>

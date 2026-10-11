@@ -306,10 +306,18 @@
     padding-bottom: 2px;
 }
 
-.cbgm-list-foot {
+.cbgm-list-foot,
+.cbgm-list-foot:visited {
+    display: block;
+    color: inherit;
     text-align: center;
     cursor: pointer;
     text-decoration: underline;
+}
+
+/* 줄이 둘 이어질 때 사이를 좁힌다. */
+.cbgm-list-foot + .cbgm-list-foot {
+    padding-top: 0;
 }
 
 .cbgm-row-item {
@@ -707,6 +715,46 @@
     height: 100%;
     background: var(--cbgm-ink);
     transition: width 0.3s linear;
+}
+
+/* 곡 카드를 꾹 눌렀을 때 뜨는 메뉴 */
+.cbgm-card-menu {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 4001;
+    min-width: 170px;
+    padding: 4px;
+    color: var(--SmartThemeBodyColor, #ddd);
+    background: var(--SmartThemeBlurTintColor, #222);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+    font-size: 14px;
+    user-select: none;
+}
+
+.cbgm-card-menu-item,
+.cbgm-card-menu-item:visited {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.cbgm-card-menu-item:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 10%, transparent);
+}
+
+.cbgm-card-menu-item i {
+    width: 1.2em;
+    text-align: center;
+    opacity: 0.75;
 }
 
 /* ── 설정 서랍 ── */
