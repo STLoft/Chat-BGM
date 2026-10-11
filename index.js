@@ -1090,6 +1090,8 @@ function scheduleCards() {
 // 짧게 누르면 재생·일시정지, 꾹 누르거나 우클릭하면 플레이어를 연다.
 // 빠른 답장은 세트가 바뀔 때마다 줄을 새로 그리므로 그때마다 다시 붙인다.
 
+const DOCK_ICONS = '#cbgm_qr, #memory-auto-toggle-fab';
+
 function findIconHost() {
     const scope = document.querySelector('#qr--bar') || document.querySelector('#qr--popout > .qr--body');
     if (!scope) return { host: $id('leftSendForm'), qr: false };
@@ -1181,10 +1183,15 @@ function syncIcon() {
     if (!host) return;
     if (!icon) icon = st.icon || (st.icon = buildIcon());
     // iconOrder: 0이면 맨 뒤, 1이면 맨 앞, N이면 앞에서 N번째. 그 세트의 단추들 사이에 끼워 넣는다.
-    const others = [...host.children].filter((el) => el !== icon);
+    // "내 앞에 빠른 답장 단추가 몇 개 있어야 하는가"로 자리를 판단하고, 이미 맞으면 건드리지 않는다.
+    // 같은 칸에 자리를 정해 붙는 다른 확장의 아이콘은 세지 않는다. 세면 서로 자리를 뺏으며 끝없이 옮기게 된다.
+    const children = [...host.children];
+    const real = children.filter((el) => !el.matches(DOCK_ICONS));
     const order = clamp(S().iconOrder, 0, 99);
-    const before = order > 0 ? others[order - 1] || null : null;
-    if (icon.parentElement !== host || icon.nextElementSibling !== before) host.insertBefore(icon, before);
+    const wanted = order > 0 ? Math.min(order - 1, real.length) : real.length;
+    const index = children.indexOf(icon);
+    const ahead = index < 0 ? -1 : children.slice(0, index).filter((el) => !el.matches(DOCK_ICONS)).length;
+    if (ahead !== wanted) host.insertBefore(icon, real[wanted] || null);
     icon.classList.toggle('qr--button', qr);
     renderIcon();
 }
