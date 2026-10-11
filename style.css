@@ -358,8 +358,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    position: relative;
     width: fit-content;
-    max-width: 100%;
+    /* 바깥에 놓이는 떼기 단추가 말풍선 밖으로 나가지 않게 양옆을 비워 둔다. */
+    max-width: calc(100% - 3.6em);
     margin: 0 auto 12px;
     padding: 6px 14px 6px 6px;
     color: var(--cbgm-ink);
@@ -476,14 +478,17 @@
     50% { transform: scaleY(1); }
 }
 
-/* 직접 붙인 카드를 떼는 단추 */
+/* 카드를 떼는 단추. 테두리 밖 오른쪽에 둔다. 가운데 정렬에는 끼어들지 않는다. */
 .cbgm-card .cbgm-card-x {
-    flex: none;
-    order: 9;
-    margin: -4px -8px -4px -4px;
-    padding: 4px 6px;
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 2px;
+    padding: 6px;
     font-size: 0.8em;
-    opacity: 0.35;
+    opacity: 0.3;
+    transition: opacity 0.15s;
 }
 
 .cbgm-card .cbgm-card-x:hover {
@@ -519,7 +524,7 @@
 /* 미니 플레이어 */
 .cbgm-card--player {
     gap: 12px;
-    min-width: min(16em, 100%);
+    min-width: min(16em, calc(100% - 3.6em));
     padding: 8px 12px 8px 8px;
     border-radius: 14px;
 }
@@ -644,7 +649,7 @@
 /* 진행 막대 */
 .cbgm-card--bar {
     flex-wrap: wrap;
-    min-width: min(16em, 100%);
+    min-width: min(16em, calc(100% - 3.6em));
     padding: 10px 12px;
     border-radius: 14px;
 }
